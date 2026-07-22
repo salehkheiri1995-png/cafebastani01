@@ -4,8 +4,8 @@ import { api, ApiError, clearToken } from "../api/client";
 import OrderCard from "../components/OrderCard";
 import PanelHeader from "../components/PanelHeader";
 import QrScanner from "../components/QrScanner";
-import QtyControl from "../components/QtyControl";
 import StatusBadge from "../components/StatusBadge";
+import WalkInMenuGrid from "../components/WalkInMenuGrid";
 import type { MenuCategory, Order, OrderStatus } from "../types";
 import { faNum, formatTime, formatToman } from "../utils/format";
 
@@ -49,7 +49,6 @@ export default function CashierPage() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  // اگر توکن منقضی شده بود، به صفحه ورود برگرد؛ وگرنه پیام خطا بده
   const describeError = useCallback(
     (e: unknown): string => {
       if (e instanceof ApiError && e.status === 401) {
@@ -193,7 +192,6 @@ export default function CashierPage() {
     [filter, describeError],
   );
 
-  // فقط وقتی تب «امروز» باز است، هر ۱۵ ثانیه لیست تازه می‌شود
   useEffect(() => {
     if (tab !== "today") return;
     loadToday();
@@ -251,7 +249,7 @@ export default function CashierPage() {
                 onChange={(e) => setManualCode(e.target.value)}
                 placeholder="یا کد سفارش را دستی وارد کن"
                 dir="ltr"
-                className="w-full rounded-xl border border-gray-200 bg-cream p-3 text-center font-mono text-sm tracking-widest outline-none focus:border-saffron"
+                className="w-full rounded-xl border border-saffron/30 bg-cream p-3 text-center font-mono text-sm tracking-widest outline-none focus:border-saffron"
               />
               <button
                 type="submit"
@@ -271,7 +269,7 @@ export default function CashierPage() {
                 busy={busy}
               />
             ) : (
-              <div className="flex h-full min-h-48 items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 p-5 text-center text-sm text-gray-400">
+              <div className="flex h-full min-h-48 items-center justify-center rounded-2xl border-2 border-dashed border-saffron/20 p-5 text-center text-sm text-ink/40">
                 بعد از اسکن، سفارش این‌جا نمایش داده می‌شود
                 <br />
                 (سفارش‌های در انتظار، خودکار وارد آماده‌سازی می‌شوند)
@@ -284,47 +282,18 @@ export default function CashierPage() {
       {/* ---------- تب سفارش دستی ---------- */}
       {tab === "walkin" && (
         <div className="grid gap-5 md:grid-cols-2">
-          {/* انتخاب از منو */}
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-bold">انتخاب از منو</h2>
-              <button
-                type="button"
-                onClick={loadMenu}
-                className="text-xs font-bold text-saffron-dark underline"
-              >
-                تازه‌سازی منو
-              </button>
-            </div>
-            {!menu && <p className="text-sm text-gray-400">در حال دریافت…</p>}
-            <div className="max-h-[26rem] space-y-4 overflow-y-auto pl-1">
-              {menu?.map((cat) => (
-                <div key={cat.id}>
-                  <h3 className="mb-2 text-sm font-bold text-gray-500">
-                    {cat.name}
-                  </h3>
-                  <div className="space-y-2">
-                    {cat.products.map((product) => (
-                      <div
-                        key={product.id}
-                        className="flex items-center justify-between gap-2 rounded-xl bg-cream px-3 py-2"
-                      >
-                        <div className="min-w-0 text-sm">
-                          <span className="font-medium">{product.name}</span>
-                          <span className="mr-2 text-xs text-gray-500">
-                            {formatToman(product.price)}
-                          </span>
-                        </div>
-                        <QtyControl
-                          value={walkInCart[product.id] ?? 0}
-                          onChange={(qty) => setWalkInQty(product.id, qty)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* انتخاب از منو — کامپوننت grid/list */}
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            {!menu ? (
+              <p className="py-4 text-center text-sm text-ink/40">در حال دریافت منو…</p>
+            ) : (
+              <WalkInMenuGrid
+                menu={menu}
+                cart={walkInCart}
+                onQtyChange={setWalkInQty}
+                onRefresh={loadMenu}
+              />
+            )}
           </div>
 
           {/* خلاصه و ثبت */}
@@ -332,9 +301,7 @@ export default function CashierPage() {
             <div className="rounded-2xl bg-white p-5 shadow-sm">
               <h2 className="mb-3 font-bold">سفارش حضوری</h2>
               {walkInLines.length === 0 ? (
-                <p className="text-sm text-gray-400">
-                  هنوز چیزی انتخاب نشده
-                </p>
+                <p className="text-sm text-ink/40">هنوز چیزی انتخاب نشده</p>
               ) : (
                 <ul className="space-y-2">
                   {walkInLines.map((line) => (
@@ -344,10 +311,7 @@ export default function CashierPage() {
                     >
                       <span>
                         {line.product.name}
-                        <span className="text-gray-500">
-                          {" "}
-                          × {faNum(line.quantity)}
-                        </span>
+                        <span className="text-ink/50"> × {faNum(line.quantity)}</span>
                       </span>
                       <span className="font-medium">
                         {formatToman(line.product.price * line.quantity)}
@@ -360,9 +324,7 @@ export default function CashierPage() {
               <div className="receipt-divider my-3" />
               <div className="flex items-center justify-between font-bold">
                 <span>جمع کل</span>
-                <span className="text-saffron-dark">
-                  {formatToman(walkInTotal)}
-                </span>
+                <span className="text-saffron-dark">{formatToman(walkInTotal)}</span>
               </div>
 
               <input
@@ -371,7 +333,7 @@ export default function CashierPage() {
                 onChange={(e) => setWalkInName(e.target.value)}
                 placeholder="اسم مشتری (اختیاری)"
                 maxLength={100}
-                className="mt-4 w-full rounded-xl border border-gray-200 bg-cream p-3 text-sm outline-none focus:border-saffron"
+                className="mt-4 w-full rounded-xl border border-saffron/20 bg-cream p-3 text-sm outline-none focus:border-saffron"
               />
               <textarea
                 value={walkInNote}
@@ -379,7 +341,7 @@ export default function CashierPage() {
                 placeholder="توضیحات (اختیاری)"
                 maxLength={500}
                 rows={2}
-                className="mt-2 w-full rounded-xl border border-gray-200 bg-cream p-3 text-sm outline-none focus:border-saffron"
+                className="mt-2 w-full rounded-xl border border-saffron/20 bg-cream p-3 text-sm outline-none focus:border-saffron"
               />
               <button
                 type="button"
@@ -394,13 +356,11 @@ export default function CashierPage() {
             {walkInResult && (
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-pistachio">
-                    ✓ ثبت شد — رسید سفارش:
-                  </h3>
+                  <h3 className="text-sm font-bold text-pistachio">✓ ثبت شد — رسید سفارش:</h3>
                   <button
                     type="button"
                     onClick={() => setWalkInResult(null)}
-                    className="text-xs text-gray-400 underline"
+                    className="text-xs text-ink/40 underline"
                   >
                     بستن رسید
                   </button>
@@ -419,7 +379,6 @@ export default function CashierPage() {
       {/* ---------- تب سفارش‌های امروز ---------- */}
       {tab === "today" && (
         <div className="space-y-4">
-          {/* فیلتر وضعیت */}
           <div className="no-scrollbar flex gap-2 overflow-x-auto">
             {FILTERS.map((f) => (
               <button
@@ -437,12 +396,9 @@ export default function CashierPage() {
             ))}
           </div>
 
-          {/* جمع فروش تحویل‌شده امروز */}
           <div className="rounded-xl bg-pistachio-light px-4 py-2 text-sm">
             جمع فروش تحویل‌شدهٔ امروز:{" "}
-            <span className="font-bold text-pistachio">
-              {formatToman(todayTotal)}
-            </span>
+            <span className="font-bold text-pistachio">{formatToman(todayTotal)}</span>
           </div>
 
           {selectedOrder && (
@@ -452,7 +408,7 @@ export default function CashierPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedOrder(null)}
-                  className="text-xs text-gray-400 underline"
+                  className="text-xs text-ink/40 underline"
                 >
                   بستن
                 </button>
@@ -465,9 +421,8 @@ export default function CashierPage() {
             </div>
           )}
 
-          {/* لیست سفارش‌ها */}
           {todayOrders.length === 0 ? (
-            <p className="py-10 text-center text-sm text-gray-400">
+            <p className="py-10 text-center text-sm text-ink/40">
               امروز هنوز سفارشی با این وضعیت نیست
             </p>
           ) : (
@@ -477,28 +432,22 @@ export default function CashierPage() {
                   key={order.id}
                   type="button"
                   onClick={() => setSelectedOrder(order)}
-                  className="flex w-full items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 text-right last:border-b-0 hover:bg-cream"
+                  className="flex w-full items-center justify-between gap-3 border-b border-saffron/10 px-4 py-3 text-right last:border-b-0 hover:bg-cream"
                 >
                   <div className="flex items-center gap-3">
                     <span className="font-mono text-sm font-bold" dir="ltr">
                       {order.code}
                     </span>
-                    <span className="text-xs text-gray-500">
-                      {formatTime(order.created_at)}
-                    </span>
+                    <span className="text-xs text-ink/50">{formatTime(order.created_at)}</span>
                     {order.customer_name && (
-                      <span className="text-xs text-gray-500">
-                        {order.customer_name}
-                      </span>
+                      <span className="text-xs text-ink/50">{order.customer_name}</span>
                     )}
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-ink/40">
                       {order.source === "online" ? "آنلاین" : "حضوری"}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold">
-                      {formatToman(order.total_amount)}
-                    </span>
+                    <span className="text-sm font-bold">{formatToman(order.total_amount)}</span>
                     <StatusBadge status={order.status} />
                   </div>
                 </button>
