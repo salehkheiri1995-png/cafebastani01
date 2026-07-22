@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* پایه صفحه */
+body {
+  @apply bg-cream font-vazir text-ink antialiased;
+}
+
+/* خط پرفراژ رسید — امضای بصری پروژه */
+.receipt-divider {
+  border-top: 2px dashed #d8cbb8;
+}
+
+/* اسکرول افقی بدون نوار اسکرول (تب‌های دسته‌بندی) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

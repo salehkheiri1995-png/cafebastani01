@@ -1,0 +1,12 @@
+# پایتون
+backend/venv/
+__pycache__/
+*.pyc
+
+# دیتابیس و تنظیمات محلی — این‌ها نباید وارد گیت شوند
+backend/cafe.db
+backend/.env
+
+# فرانت
+frontend/node_modules/
+frontend/dist/
