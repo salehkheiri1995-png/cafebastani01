@@ -8,6 +8,7 @@ export interface Product {
   price: number;
   is_available: boolean;
   display_order: number;
+  image_url: string | null;   // ← آدرس عکس محصول (null = ندارد)
 }
 
 export interface MenuCategory {
