@@ -302,7 +302,7 @@ export default function MenuPage() {
                 return (
                   <div key={product.id}
                     className="flex w-[100px] flex-shrink-0 snap-start flex-col overflow-hidden rounded-2xl bg-white shadow-sm">
-                    <div className="h-[70px] w-full overflow-hidden">
+                    <div className="h-[90px] w-full overflow-hidden">
                       <ProductImage product={product} catName={cat?.name ?? ""} size="full" />
                     </div>
                     <div className="flex flex-1 flex-col p-2">

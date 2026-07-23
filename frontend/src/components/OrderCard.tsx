@@ -14,11 +14,11 @@ const ACTIONS: Partial<
   Record<OrderStatus, { label: string; next: OrderStatus; style: string }[]>
 > = {
   pending: [
-    { label: "شروع آماده‌سازی", next: "preparing", style: "bg-blue-600 text-white" },
+    { label: "شروع آماده‌سازی", next: "preparing", style: "bg-pistachio text-white" },
     { label: "لغو سفارش", next: "cancelled", style: "bg-berry-light text-berry" },
   ],
   preparing: [
-    { label: "آماده شد", next: "ready", style: "bg-pistachio text-white" },
+    { label: "آماده شد", next: "ready", style: "bg-saffron text-white" },
     { label: "لغو سفارش", next: "cancelled", style: "bg-berry-light text-berry" },
   ],
   ready: [
