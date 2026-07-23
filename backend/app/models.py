@@ -10,10 +10,12 @@ from .database import Base
 ORDER_STATUSES = ("pending", "preparing", "ready", "completed", "cancelled")
 
 # گذارهای مجاز بین وضعیت‌ها:
-# pending → preparing/cancelled ، preparing → ready/cancelled ، ready → completed
+# pending → preparing/cancelled
+# preparing → ready/completed/cancelled  (صندوقدار می‌تواند مستقیم تسویه کند)
+# ready → completed
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "pending": {"preparing", "cancelled"},
-    "preparing": {"ready", "cancelled"},
+    "preparing": {"ready", "completed", "cancelled"},
     "ready": {"completed"},
     "completed": set(),
     "cancelled": set(),
