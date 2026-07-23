@@ -28,6 +28,173 @@ const FILTERS: { id: OrderStatus | "all"; label: string; color: string }[] = [
 
 const EDITABLE_STATUSES: OrderStatus[] = ["pending", "preparing"];
 
+// ───────────────────────── تابع پرینت رسید حرارتی ─────────────────────────
+function printReceipt(order: Order) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("fa-IR", {
+    year: "numeric", month: "long", day: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString("fa-IR", {
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  const itemsHtml = order.items
+    .map(
+      (item: OrderItem) => `
+      <tr>
+        <td style="padding:3px 0;text-align:right;">${item.product_name}</td>
+        <td style="padding:3px 4px;text-align:center;">${faNum(item.quantity)}</td>
+        <td style="padding:3px 0;text-align:left;direction:ltr;">${formatToman(item.unit_price)}</td>
+      </tr>
+      <tr>
+        <td colspan="3" style="padding:0 0 4px 0;text-align:left;direction:ltr;font-size:10px;color:#888;">
+          جمع: ${formatToman(item.unit_price * item.quantity)}
+        </td>
+      </tr>`
+    )
+    .join("");
+
+  const receiptHtml = `
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8"/>
+  <title>رسید سفارش ${order.code}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Vazirmatn', Tahoma, Arial, sans-serif;
+      font-size: 12px;
+      width: 80mm;
+      max-width: 80mm;
+      padding: 8px 10px;
+      color: #111;
+      background: white;
+    }
+    .center { text-align: center; }
+    .cafe-name {
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      margin-bottom: 2px;
+    }
+    .divider {
+      border: none;
+      border-top: 1px dashed #555;
+      margin: 6px 0;
+    }
+    .divider-solid {
+      border: none;
+      border-top: 2px solid #111;
+      margin: 6px 0;
+    }
+    .label { color: #555; font-size: 10px; }
+    .code {
+      font-family: monospace;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      direction: ltr;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 4px 0;
+    }
+    th {
+      font-size: 10px;
+      color: #555;
+      padding: 2px 0;
+      font-weight: 700;
+    }
+    .total-row td {
+      font-size: 14px;
+      font-weight: 900;
+      padding-top: 4px;
+    }
+    .total-amount {
+      font-size: 16px;
+      font-weight: 900;
+      direction: ltr;
+    }
+    .footer {
+      font-size: 10px;
+      color: #666;
+      margin-top: 4px;
+    }
+    @media print {
+      body { width: 80mm; }
+      @page { margin: 0; size: 80mm auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="center">
+    <div class="cafe-name">☕ کافه بستنی</div>
+    <div class="label">رسید سفارش</div>
+  </div>
+  <hr class="divider-solid"/>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+    <span class="label">کد سفارش:</span>
+    <span class="code">${order.code}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+    <span class="label">تاریخ:</span>
+    <span>${dateStr}</span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+    <span class="label">ساعت:</span>
+    <span>${timeStr}</span>
+  </div>
+  ${order.customer_name ? `
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+    <span class="label">مشتری:</span>
+    <span>${order.customer_name}</span>
+  </div>` : ""}
+
+  <hr class="divider"/>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="text-align:right;">نام</th>
+        <th style="text-align:center;">تعداد</th>
+        <th style="text-align:left;direction:ltr;">قیمت</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+  </table>
+
+  <hr class="divider-solid"/>
+
+  <table>
+    <tr class="total-row">
+      <td style="text-align:right;">جمع کل:</td>
+      <td style="text-align:left;direction:ltr;" class="total-amount">${formatToman(order.total_amount)}</td>
+    </tr>
+  </table>
+
+  <hr class="divider"/>
+
+  <div class="center footer">
+    <div>با تشکر از انتخاب شما 🙏</div>
+    <div style="margin-top:2px;">کافه بستنی — پرداخت انجام شد ✓</div>
+  </div>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=400,height=600");
+  if (!win) { alert("مرورگر پاپ‌آپ را مسدود کرده. لطفاً مجوز پاپ‌آپ را بده."); return; }
+  win.document.write(receiptHtml);
+  win.document.close();
+  win.focus();
+  setTimeout(() => { win.print(); win.close(); }, 500);
+}
+
 // ───────────────────────────── مودال ویرایش سفارش ─────────────────────────────
 interface EditOrderModalProps {
   order: Order;
@@ -37,7 +204,6 @@ interface EditOrderModalProps {
 }
 
 function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) {
-  // cart: map از product_id به quantity
   const initialCart = useMemo(() => {
     const m: Record<number, number> = {};
     order.items.forEach((it) => { m[it.product_id] = it.quantity; });
@@ -83,7 +249,6 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
     }
   };
 
-  // گروه‌بندی محصولات بر اساس دسته‌بندی برای نمایش در مودال
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
@@ -94,7 +259,6 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
         className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl bg-white overflow-hidden flex flex-col"
         style={{ maxHeight: "92vh", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
       >
-        {/* هدر */}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "#f0ebe3" }}>
           <div>
             <h2 className="font-bold text-base" style={{ color: "#33261D" }}>ویرایش سفارش</h2>
@@ -105,11 +269,8 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
             style={{ background: "#f7f3ee", color: "#33261D" }}>✕</button>
         </div>
 
-        {/* بدنه اسکرول‌پذیر */}
         <div className="flex-1 overflow-y-auto">
           <div className="grid md:grid-cols-2 gap-0">
-
-            {/* ستون چپ: منو */}
             <div className="border-l" style={{ borderColor: "#f0ebe3" }}>
               <div className="px-4 py-3 text-xs font-bold" style={{ color: "rgba(51,38,29,0.45)", background: "#faf6ef" }}>
                 انتخاب از منو
@@ -148,7 +309,6 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
               ))}
             </div>
 
-            {/* ستون راست: خلاصه */}
             <div className="flex flex-col">
               <div className="px-4 py-3 text-xs font-bold" style={{ color: "rgba(51,38,29,0.45)", background: "#faf6ef" }}>
                 سفارش جدید
@@ -194,7 +354,6 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
           </div>
         </div>
 
-        {/* فوتر */}
         {err && (
           <div className="mx-4 mb-2 rounded-xl px-4 py-2 text-sm" style={{ background: "#fef2f2", color: "#991b1b" }}>
             {err}
@@ -211,6 +370,73 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ───────────────────── کامپوننت دکمه‌های تایید و پرینت ─────────────────────
+interface ConfirmAndPrintProps {
+  order: Order;
+  onStatusChange: (orderId: number, status: OrderStatus) => Promise<void>;
+  busy: boolean;
+}
+
+function ConfirmAndPrint({ order, onStatusChange, busy }: ConfirmAndPrintProps) {
+  const [confirming, setConfirming] = useState(false);
+
+  const handleConfirmAndPrint = async () => {
+    setConfirming(true);
+    try {
+      // اگر سفارش هنوز completed نیست، اول تایید کن
+      if (order.status !== "completed") {
+        await onStatusChange(order.id, "completed");
+      }
+      // بعد پرینت بگیر
+      printReceipt(order);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleReprintOnly = () => {
+    printReceipt(order);
+  };
+
+  const isCompleted = order.status === "completed";
+  const isCancelled = order.status === "cancelled";
+
+  if (isCancelled) return null;
+
+  return (
+    <div className="mt-3 flex gap-2">
+      {!isCompleted ? (
+        <button
+          type="button"
+          onClick={handleConfirmAndPrint}
+          disabled={busy || confirming}
+          className="flex flex-1 items-center justify-center gap-2 rounded-2xl py-3 text-sm font-bold text-white transition-all disabled:opacity-50"
+          style={{ background: "linear-gradient(135deg, #22c55e, #16a34a)", boxShadow: "0 2px 12px rgba(22,163,74,0.35)" }}
+        >
+          <span>🖨️</span>
+          {confirming ? "در حال پردازش…" : "تایید و چاپ رسید"}
+        </button>
+      ) : (
+        <div className="flex flex-1 items-center gap-2 rounded-2xl px-4 py-2.5"
+          style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+          <span className="text-green-600 font-bold text-sm">✓ تحویل و تسویه شد</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={handleReprintOnly}
+        disabled={busy}
+        className="flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-xs font-bold transition-all disabled:opacity-50"
+        style={{ background: "#e0e7ff", color: "#3730a3" }}
+        title="پرینت مجدد رسید"
+      >
+        <span>🔁</span>
+        <span>چاپ مجدد</span>
+      </button>
     </div>
   );
 }
@@ -236,7 +462,6 @@ export default function CashierPage() {
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
-  // مودال ویرایش
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const describeError = useCallback((e: unknown): string => {
@@ -321,7 +546,6 @@ export default function CashierPage() {
     todayOrders.filter((o) => o.status === "completed").reduce((sum, o) => sum + o.total_amount, 0),
     [todayOrders]);
 
-  // وقتی ویرایش تأیید شد
   const handleEditSaved = (updated: Order) => {
     setEditingOrder(null);
     setScannedOrder((prev) => (prev?.id === updated.id ? updated : prev));
@@ -330,7 +554,6 @@ export default function CashierPage() {
     setTodayOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
   };
 
-  // دکمه ویرایش سفارش
   const EditBtn = ({ order }: { order: Order }) => {
     const canEdit = EDITABLE_STATUSES.includes(order.status as OrderStatus);
     if (!canEdit) return null;
@@ -398,6 +621,7 @@ export default function CashierPage() {
                   <EditBtn order={scannedOrder} />
                 </div>
                 <OrderCard order={scannedOrder} onStatusChange={changeStatus} busy={busy} />
+                <ConfirmAndPrint order={scannedOrder} onStatusChange={changeStatus} busy={busy} />
               </div>
             ) : (
               <div className="flex h-full min-h-52 items-center justify-center rounded-2xl text-center text-sm"
@@ -464,6 +688,7 @@ export default function CashierPage() {
                     className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن رسید</button>
                 </div>
                 <OrderCard order={walkInResult} onStatusChange={changeStatus} busy={busy} />
+                <ConfirmAndPrint order={walkInResult} onStatusChange={changeStatus} busy={busy} />
               </div>
             )}
           </div>
@@ -473,7 +698,6 @@ export default function CashierPage() {
       {/* ── TODAY TAB ── */}
       {tab === "today" && (
         <div className="space-y-4">
-          {/* filter chips */}
           <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
             {FILTERS.map((f) => (
               <button key={f.id} type="button" onClick={() => setFilter(f.id)}
@@ -486,7 +710,6 @@ export default function CashierPage() {
             ))}
           </div>
 
-          {/* summary card */}
           <div className="flex items-center justify-between rounded-2xl px-5 py-4"
             style={{ background: "linear-gradient(135deg, #e3f0e9, #d1e8db)", border: "1px solid #b8dac8" }}>
             <div>
@@ -507,6 +730,7 @@ export default function CashierPage() {
                 </div>
               </div>
               <OrderCard order={selectedOrder} onStatusChange={changeStatus} busy={busy} />
+              <ConfirmAndPrint order={selectedOrder} onStatusChange={changeStatus} busy={busy} />
             </div>
           )}
 
