@@ -12,6 +12,7 @@ import CashierPage from "./pages/CashierPage";
 import LoginPage from "./pages/LoginPage";
 import MenuPage from "./pages/MenuPage";
 import OrderSuccessPage from "./pages/OrderSuccessPage";
+import ReportsPage from "./pages/ReportsPage";
 
 // گارد مسیرهای محافظت‌شده: بدون توکن → صفحه ورود
 function RequireAuth({ children }: { children: ReactElement }) {
@@ -44,6 +45,14 @@ export default function App() {
           element={
             <RequireAuth>
               <AdminPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <RequireAuth>
+              <ReportsPage />
             </RequireAuth>
           }
         />

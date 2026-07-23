@@ -9,7 +9,7 @@ from . import models  # noqa: F401 — لازم برای ثبت مدل‌ها ق
 from .auth import router as auth_router
 from .config import settings
 from .database import Base, SessionLocal, engine, run_sqlite_migrations
-from .routers import admin, cashier, menu, orders
+from .routers import admin, cashier, menu, orders, reports
 from .seed import seed_if_empty
 from .storage import STATIC_DIR, ensure_dirs
 
@@ -48,6 +48,7 @@ app.include_router(menu.router)
 app.include_router(orders.router)
 app.include_router(cashier.router)
 app.include_router(admin.router)
+app.include_router(reports.router)
 
 # سرو کردن فایل‌های استاتیک (عکس محصولات) از backend/static
 # ensure_dirs قبل از mount لازم است چون StaticFiles وجود پوشه را همان لحظه چک می‌کند
