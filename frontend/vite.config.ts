@@ -13,6 +13,11 @@ export default defineConfig({
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
       },
+      // عکس محصولات (/static/products/...) هم از بک‌اند سرو می‌شود
+      "/static": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
     },
   },
 });

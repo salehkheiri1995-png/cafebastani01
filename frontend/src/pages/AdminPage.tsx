@@ -12,8 +12,14 @@ import Modal from "../components/Modal";
 import PanelHeader from "../components/PanelHeader";
 import type { Category, Product } from "../types";
 import { formatToman } from "../utils/format";
+import { resolveImageUrl } from "../utils/image";
 
 interface DeleteResult { deleted: boolean; detail: string; }
+
+interface ImageUploadResult { image_url: string; detail: string; }
+
+// سقف حجم عکس محصول: ۵ مگابایت
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 type CatModal = { mode: "create" } | { mode: "edit"; category: Category };
 type ProdModal = { mode: "create" } | { mode: "edit"; product: Product };
@@ -30,6 +36,8 @@ export default function AdminPage() {
   const [prodModal, setProdModal] = useState<ProdModal | null>(null);
   const [priceEditId, setPriceEditId] = useState<number | null>(null);
   const [priceValue, setPriceValue] = useState("");
+  // شناسه محصولی که عکسش در حال آپلود است — فقط همان ردیف حالت لودینگ می‌گیرد
+  const [uploadingProductId, setUploadingProductId] = useState<number | null>(null);
   const flashTimer = useRef<number | null>(null);
 
   const describeError = useCallback((e: unknown): string => {
@@ -123,22 +131,43 @@ export default function AdminPage() {
     }, `قیمت «${product.name}» به ${formatToman(parsed)} تغییر کرد`);
   };
 
-  // ── image upload ────────────────────────────────────────────────────────
-  const uploadImage = async (product: Product, file: File) => {
-    if (busy) return;
+  // ── آپلود عکس محصول ──────────────────────────────────────────────────────
+  const uploadImage = async (product: Product, file: File | undefined) => {
+    if (!file || busy) return;
+
+    // اعتبارسنجی سمت کلاینت قبل از ارسال (سرور هم دوباره چک می‌کند)
+    if (!file.type.startsWith("image/")) {
+      setError("فقط فایل تصویری مجاز است");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError("حجم عکس باید کمتر از ۵ مگابایت باشد");
+      return;
+    }
+
     setBusy(true);
+    setUploadingProductId(product.id);
     setError(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
-      // POST /api/admin/products/{id}/image → returns { image_url: string }
-      await api.postForm(`/api/admin/products/${product.id}/image`, formData);
+      const res = await api.postForm<ImageUploadResult>(
+        `/api/admin/products/${product.id}/image`,
+        formData,
+      );
+      // خواندن دوباره لیست از سرور تا thumbnail همان لحظه آپدیت شود
       await loadAll();
-      flash(`عکس «${product.name}» آپلود شد`);
+      flash(
+        res.image_url
+          ? `عکس «${product.name}» ذخیره شد`
+          : `عکس «${product.name}» آپلود شد`,
+      );
     } catch (e) {
-      setError(describeError(e));
+      const msg = describeError(e);
+      setError(msg === "خطای غیرمنتظره رخ داد" ? "آپلود عکس ناموفق بود" : msg);
     } finally {
       setBusy(false);
+      setUploadingProductId(null);
     }
   };
 
@@ -229,7 +258,7 @@ export default function AdminPage() {
               <div className="flex items-start gap-3">
                 <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-cream">
                   {product.image_url ? (
-                    <img src={product.image_url} alt={product.name}
+                    <img src={resolveImageUrl(product.image_url) ?? undefined} alt={product.name}
                       className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-2xl text-gray-300">🖼️</div>
@@ -249,13 +278,14 @@ export default function AdminPage() {
                   )}
                   {/* image upload / remove buttons */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <label className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold ${busy ? "opacity-50 cursor-not-allowed" : "bg-saffron-light text-saffron-dark hover:bg-saffron/20"}`}>
-                      📷 {product.image_url ? "تغییر عکس" : "آپلود عکس"}
+                    <label className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold ${busy ? "cursor-not-allowed opacity-50 bg-gray-100 text-gray-500" : "bg-saffron-light text-saffron-dark hover:bg-saffron/20"}`}>
+                      {uploadingProductId === product.id
+                        ? "⏳ در حال آپلود..."
+                        : `📷 ${product.image_url ? "تغییر عکس" : "آپلود عکس"}`}
                       <input type="file" accept="image/*" className="hidden"
                         disabled={busy}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                          const file = e.target.files?.[0];
-                          if (file) uploadImage(product, file);
+                          uploadImage(product, e.target.files?.[0]);
                           e.target.value = "";
                         }} />
                     </label>

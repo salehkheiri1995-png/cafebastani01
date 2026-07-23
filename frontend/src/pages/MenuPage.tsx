@@ -4,6 +4,7 @@ import { api, ApiError } from "../api/client";
 import QtyControl from "../components/QtyControl";
 import type { MenuCategory, Order, Product } from "../types";
 import { faNum, formatToman } from "../utils/format";
+import { resolveImageUrl } from "../utils/image";
 
 // ── emoji fallback by category name ──────────────────────────────────────────
 function categoryEmoji(name: string): string {
@@ -45,7 +46,7 @@ function ProductImage({ product, catName, size = "full" }: { product: Product; c
   if (product.image_url && !err) {
     return (
       <img
-        src={product.image_url}
+        src={resolveImageUrl(product.image_url) ?? undefined}
         alt={product.name}
         onError={() => setErr(true)}
         className={size === "full" ? "h-36 w-full object-cover" : "h-full w-full object-cover"}

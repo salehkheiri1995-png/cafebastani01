@@ -48,6 +48,8 @@ class ProductOut(BaseModel):
     name: str
     description: str | None = None
     price: int
+    # آدرس عکس محصول (نسبی مثل /static/products/x.jpg) — در همه پاسخ‌ها برمی‌گردد
+    image_url: str | None = None
     is_available: bool
     display_order: int
 
@@ -125,4 +127,11 @@ class StatusUpdate(BaseModel):
 
 class DeleteResult(BaseModel):
     deleted: bool
+    detail: str
+
+
+class ImageUploadResult(BaseModel):
+    """پاسخ آپلود موفق عکس محصول"""
+
+    image_url: str
     detail: str

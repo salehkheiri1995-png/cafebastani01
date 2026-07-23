@@ -1,5 +1,5 @@
-"""پنل مدیریت منو — CRUD دسته و محصول (نیاز به توکن)"""
-from fastapi import APIRouter, Depends, HTTPException, Query
+"""پنل مدیریت منو — CRUD دسته و محصول + آپلود عکس (نیاز به توکن)"""
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -10,10 +10,15 @@ from ..schemas import (
     CategoryOut,
     CategoryUpdate,
     DeleteResult,
+    ImageUploadResult,
     ProductCreate,
     ProductOut,
     ProductUpdate,
 )
+from ..storage import delete_product_image_file, save_product_image
+
+# سقف حجم عکس محصول: ۵ مگابایت
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 router = APIRouter(
     prefix="/api/admin",
@@ -159,6 +164,58 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
             detail="این محصول در سفارش‌های قبلی استفاده شده؛ به‌جای حذف، ناموجود شد",
         )
 
+    # حذف واقعی محصول → فایل عکسش هم از دیسک پاک می‌شود
+    delete_product_image_file(product.image_url)
     db.delete(product)
     db.commit()
     return DeleteResult(deleted=True, detail="محصول حذف شد")
+
+
+# ---------------- عکس محصول ----------------
+
+
+@router.post("/products/{product_id}/image", response_model=ImageUploadResult)
+async def upload_product_image(
+    product_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> ImageUploadResult:
+    """آپلود عکس محصول: اعتبارسنجی نوع و حجم، ذخیره با نام یکتا،
+    حذف عکس قبلی و ثبت آدرس وبی در دیتابیس."""
+    product = db.get(models.Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="محصول پیدا نشد")
+
+    # فقط فایل تصویری قبول می‌شود
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="فقط فایل تصویری مجاز است")
+
+    data: bytes = await file.read()
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="فایل انتخاب‌شده خالی است")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=400, detail="حجم عکس باید کمتر از ۵ مگابایت باشد"
+        )
+
+    # عکس قبلی (اگر بود) از دیسک حذف و عکس جدید ذخیره می‌شود
+    delete_product_image_file(product.image_url)
+    product.image_url = save_product_image(data, file.filename, file.content_type)
+    db.commit()
+    db.refresh(product)
+    return ImageUploadResult(image_url=product.image_url, detail="عکس ذخیره شد")
+
+
+@router.delete("/products/{product_id}/image", response_model=DeleteResult)
+def remove_product_image(
+    product_id: int, db: Session = Depends(get_db)
+) -> DeleteResult:
+    """حذف عکس محصول — هم فایل فیزیکی از دیسک، هم ستون image_url در دیتابیس"""
+    product = db.get(models.Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="محصول پیدا نشد")
+
+    delete_product_image_file(product.image_url)
+    product.image_url = None
+    db.commit()
+    return DeleteResult(deleted=True, detail="عکس حذف شد")

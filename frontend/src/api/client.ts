@@ -23,9 +23,25 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+/** استخراج پیام خطای فارسی از بدنه پاسخ FastAPI ({detail: "..."}) */
+async function parseErrorResponse(res: Response): Promise<string> {
+  let message = "خطا در ارتباط با سرور";
+  try {
+    const data: unknown = await res.json();
+    if (typeof data === "object" && data !== null && "detail" in data) {
+      const detail: unknown = (data as { detail: unknown }).detail;
+      if (typeof detail === "string") message = detail;
+      else if (Array.isArray(detail)) message = "ورودی نامعتبر است";
+    }
+  } catch {
+    /* بدنه JSON نبود — همان پیام پیش‌فرض */
+  }
+  return message;
+}
+
+/** هسته مشترک همه درخواست‌ها: افزودن توکن، هندل خطای شبکه و خطای سرور */
+async function send<T>(path: string, options: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string> | undefined),
   };
 
@@ -41,27 +57,33 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
-    // استخراج پیام خطای فارسی از بدنه پاسخ FastAPI
-    let message = "خطا در ارتباط با سرور";
-    try {
-      const data = await res.json();
-      if (typeof data.detail === "string") message = data.detail;
-      else if (Array.isArray(data.detail) && data.detail[0]?.msg)
-        message = "ورودی نامعتبر است";
-    } catch {
-      /* بدنه JSON نبود */
-    }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, await parseErrorResponse(res));
   }
 
-  return res.json() as Promise<T>;
+  return (await res.json()) as T;
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
-  post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "POST", body: JSON.stringify(body) }),
-  patch: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
-  delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  get: <T>(path: string): Promise<T> => send<T>(path, {}),
+
+  post: <T>(path: string, body: unknown): Promise<T> =>
+    send<T>(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  patch: <T>(path: string, body: unknown): Promise<T> =>
+    send<T>(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  delete: <T>(path: string): Promise<T> => send<T>(path, { method: "DELETE" }),
+
+  /** ارسال فرم چندبخشی (آپلود فایل).
+   * Content-Type عمداً ست نمی‌شود تا مرورگر خودش multipart boundary بگذارد. */
+  postForm: <T>(path: string, form: FormData): Promise<T> =>
+    send<T>(path, { method: "POST", body: form }),
 };
