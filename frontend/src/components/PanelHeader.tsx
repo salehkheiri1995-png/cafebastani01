@@ -24,6 +24,12 @@ export default function PanelHeader({ title }: { title: string }) {
           <Link to="/admin" className="rounded-lg px-3 py-1.5 hover:bg-white">
             مدیریت منو
           </Link>
+          <Link
+            to="/reports"
+            className="rounded-lg bg-indigo-50 px-3 py-1.5 font-bold text-indigo-700 hover:bg-indigo-100"
+          >
+            📊 گزارش سفارش‌ها
+          </Link>
           {/* به جای Link به "/"، مودال پیش‌نمایش باز می‌شود */}
           <button
             type="button"

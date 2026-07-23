@@ -36,7 +36,6 @@ export default function AdminPage() {
   const [prodModal, setProdModal] = useState<ProdModal | null>(null);
   const [priceEditId, setPriceEditId] = useState<number | null>(null);
   const [priceValue, setPriceValue] = useState("");
-  // شناسه محصولی که عکسش در حال آپلود است — فقط همان ردیف حالت لودینگ می‌گیرد
   const [uploadingProductId, setUploadingProductId] = useState<number | null>(null);
   const flashTimer = useRef<number | null>(null);
 
@@ -131,37 +130,19 @@ export default function AdminPage() {
     }, `قیمت «${product.name}» به ${formatToman(parsed)} تغییر کرد`);
   };
 
-  // ── آپلود عکس محصول ──────────────────────────────────────────────────────
   const uploadImage = async (product: Product, file: File | undefined) => {
     if (!file || busy) return;
-
-    // اعتبارسنجی سمت کلاینت قبل از ارسال (سرور هم دوباره چک می‌کند)
-    if (!file.type.startsWith("image/")) {
-      setError("فقط فایل تصویری مجاز است");
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      setError("حجم عکس باید کمتر از ۵ مگابایت باشد");
-      return;
-    }
-
+    if (!file.type.startsWith("image/")) { setError("فقط فایل تصویری مجاز است"); return; }
+    if (file.size > MAX_IMAGE_BYTES) { setError("حجم عکس باید کمتر از ۵ مگابایت باشد"); return; }
     setBusy(true);
     setUploadingProductId(product.id);
     setError(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await api.postForm<ImageUploadResult>(
-        `/api/admin/products/${product.id}/image`,
-        formData,
-      );
-      // خواندن دوباره لیست از سرور تا thumbnail همان لحظه آپدیت شود
+      const res = await api.postForm<ImageUploadResult>(`/api/admin/products/${product.id}/image`, formData);
       await loadAll();
-      flash(
-        res.image_url
-          ? `عکس «${product.name}» ذخیره شد`
-          : `عکس «${product.name}» آپلود شد`,
-      );
+      flash(res.image_url ? `عکس «${product.name}» ذخیره شد` : `عکس «${product.name}» آپلود شد`);
     } catch (e) {
       const msg = describeError(e);
       setError(msg === "خطای غیرمنتظره رخ داد" ? "آپلود عکس ناموفق بود" : msg);
@@ -173,9 +154,7 @@ export default function AdminPage() {
 
   const removeImage = (product: Product) => {
     if (!window.confirm(`عکس «${product.name}» حذف شود؟`)) return;
-    run(async () => {
-      await api.delete(`/api/admin/products/${product.id}/image`);
-    }, `عکس «${product.name}» حذف شد`);
+    run(async () => { await api.delete(`/api/admin/products/${product.id}/image`); }, `عکس «${product.name}» حذف شد`);
   };
 
   const catName = (id: number) => categories.find((c) => c.id === id)?.name ?? "—";
@@ -184,6 +163,19 @@ export default function AdminPage() {
   return (
     <div className="mx-auto min-h-screen max-w-4xl px-4 py-6" dir="rtl">
       <PanelHeader title="مدیریت منو" />
+
+      {/* ── میانبر گزارش سفارش‌ها ── */}
+      <button
+        type="button"
+        onClick={() => navigate("/reports")}
+        className="mb-6 flex w-full items-center justify-between rounded-2xl bg-indigo-50 border border-indigo-100 px-5 py-4 text-right hover:bg-indigo-100 transition-colors"
+      >
+        <div>
+          <div className="font-bold text-indigo-800 text-base">📊 گزارش‌گیری و آرشیو سفارش‌ها</div>
+          <div className="text-sm text-indigo-500 mt-0.5">مشاهده همه سفارش‌ها، فیلتر زمانی، جستجو و خروجی Excel / PDF</div>
+        </div>
+        <span className="text-indigo-400 text-xl">←</span>
+      </button>
 
       {message && (
         <div className="mb-4 rounded-xl bg-pistachio-light p-3 text-sm font-medium text-pistachio">
@@ -254,7 +246,6 @@ export default function AdminPage() {
             <div key={product.id}
               className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-4 py-4 last:border-b-0">
 
-              {/* ── image cell ── */}
               <div className="flex items-start gap-3">
                 <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-cream">
                   {product.image_url ? (
@@ -276,31 +267,23 @@ export default function AdminPage() {
                   {product.description && (
                     <p className="mt-0.5 text-xs text-gray-400">{product.description}</p>
                   )}
-                  {/* image upload / remove buttons */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
                     <label className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold ${busy ? "cursor-not-allowed opacity-50 bg-gray-100 text-gray-500" : "bg-saffron-light text-saffron-dark hover:bg-saffron/20"}`}>
-                      {uploadingProductId === product.id
-                        ? "⏳ در حال آپلود..."
-                        : `📷 ${product.image_url ? "تغییر عکس" : "آپلود عکس"}`}
-                      <input type="file" accept="image/*" className="hidden"
-                        disabled={busy}
+                      {uploadingProductId === product.id ? "⏳ در حال آپلود..." : `📷 ${product.image_url ? "تغییر عکس" : "آپلود عکس"}`}
+                      <input type="file" accept="image/*" className="hidden" disabled={busy}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => {
                           uploadImage(product, e.target.files?.[0]);
                           e.target.value = "";
                         }} />
                     </label>
                     {product.image_url && (
-                      <button type="button" disabled={busy}
-                        onClick={() => removeImage(product)}
-                        className="rounded-lg bg-berry-light px-2.5 py-1 text-xs font-bold text-berry">
-                        🗑 حذف عکس
-                      </button>
+                      <button type="button" disabled={busy} onClick={() => removeImage(product)}
+                        className="rounded-lg bg-berry-light px-2.5 py-1 text-xs font-bold text-berry">🗑 حذف عکس</button>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* ── action buttons ── */}
               <div className="flex flex-wrap items-center gap-2">
                 {priceEditId === product.id ? (
                   <input type="number" autoFocus value={priceValue}
@@ -335,7 +318,6 @@ export default function AdminPage() {
         </div>
       </section>
 
-      {/* ── modals ── */}
       {catModal && (
         <CategoryForm initial={catModal.mode === "edit" ? catModal.category : null}
           busy={busy} onClose={() => setCatModal(null)}
@@ -363,7 +345,6 @@ export default function AdminPage() {
   );
 }
 
-// ── CategoryForm ──────────────────────────────────────────────────────────────
 function CategoryForm({ initial, busy, onClose, onSubmit }: {
   initial: Category | null; busy: boolean;
   onClose: () => void; onSubmit: (name: string, displayOrder: number) => void;
@@ -393,7 +374,6 @@ function CategoryForm({ initial, busy, onClose, onSubmit }: {
   );
 }
 
-// ── ProductForm ───────────────────────────────────────────────────────────────
 interface ProductFormData {
   category_id: number; name: string; description: string | null;
   price: number; display_order: number; is_available: boolean;
