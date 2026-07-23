@@ -6,7 +6,7 @@ import PanelHeader from "../components/PanelHeader";
 import QrScanner from "../components/QrScanner";
 import StatusBadge from "../components/StatusBadge";
 import WalkInMenuGrid from "../components/WalkInMenuGrid";
-import type { MenuCategory, Order, OrderStatus } from "../types";
+import type { MenuCategory, Order, OrderItem, OrderStatus, Product } from "../types";
 import { faNum, formatTime, formatToman } from "../utils/format";
 
 type Tab = "scan" | "walkin" | "today";
@@ -26,6 +26,197 @@ const FILTERS: { id: OrderStatus | "all"; label: string; color: string }[] = [
   { id: "cancelled", label: "لغوشده", color: "#B3323B" },
 ];
 
+const EDITABLE_STATUSES: OrderStatus[] = ["pending", "preparing"];
+
+// ───────────────────────────── مودال ویرایش سفارش ─────────────────────────────
+interface EditOrderModalProps {
+  order: Order;
+  menu: MenuCategory[];
+  onClose: () => void;
+  onSaved: (updated: Order) => void;
+}
+
+function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) {
+  // cart: map از product_id به quantity
+  const initialCart = useMemo(() => {
+    const m: Record<number, number> = {};
+    order.items.forEach((it) => { m[it.product_id] = it.quantity; });
+    return m;
+  }, [order]);
+
+  const [cart, setCart] = useState<Record<number, number>>(initialCart);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const allProducts = useMemo(() => menu.flatMap((c) => c.products), [menu]);
+
+  const setQty = (productId: number, qty: number) => {
+    setCart((prev) => {
+      const next = { ...prev };
+      if (qty <= 0) delete next[productId];
+      else next[productId] = qty;
+      return next;
+    });
+  };
+
+  const lines = useMemo(() =>
+    allProducts
+      .filter((p) => (cart[p.id] ?? 0) > 0)
+      .map((p) => ({ product: p, quantity: cart[p.id] })),
+    [allProducts, cart]
+  );
+
+  const newTotal = lines.reduce((s, l) => s + l.product.price * l.quantity, 0);
+
+  const save = async () => {
+    if (lines.length === 0) { setErr("حداقل یک آیتم باید در سفارش باشد"); return; }
+    setBusy(true); setErr(null);
+    try {
+      const updated = await api.patch<Order>(`/api/cashier/orders/${order.id}/items`, {
+        items: lines.map((l) => ({ product_id: l.product.id, quantity: l.quantity })),
+      });
+      onSaved(updated);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "خطای غیرمنتظره");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // گروه‌بندی محصولات بر اساس دسته‌بندی برای نمایش در مودال
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ background: "rgba(0,0,0,0.45)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl bg-white overflow-hidden flex flex-col"
+        style={{ maxHeight: "92vh", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
+      >
+        {/* هدر */}
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "#f0ebe3" }}>
+          <div>
+            <h2 className="font-bold text-base" style={{ color: "#33261D" }}>ویرایش سفارش</h2>
+            <p className="text-xs mt-0.5 font-mono" style={{ color: "#B8791A" }} dir="ltr">{order.code}</p>
+          </div>
+          <button type="button" onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-lg"
+            style={{ background: "#f7f3ee", color: "#33261D" }}>✕</button>
+        </div>
+
+        {/* بدنه اسکرول‌پذیر */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid md:grid-cols-2 gap-0">
+
+            {/* ستون چپ: منو */}
+            <div className="border-l" style={{ borderColor: "#f0ebe3" }}>
+              <div className="px-4 py-3 text-xs font-bold" style={{ color: "rgba(51,38,29,0.45)", background: "#faf6ef" }}>
+                انتخاب از منو
+              </div>
+              {menu.filter((cat) => cat.products.some((p) => p.is_available)).map((cat) => (
+                <div key={cat.id}>
+                  <div className="px-4 py-2 text-xs font-bold sticky top-0" style={{ background: "#fff8f0", color: "#B8791A" }}>
+                    {cat.name}
+                  </div>
+                  {cat.products.filter((p) => p.is_available).map((p) => {
+                    const qty = cart[p.id] ?? 0;
+                    return (
+                      <div key={p.id} className="flex items-center justify-between px-4 py-2.5 border-b"
+                        style={{ borderColor: "#faf6ef" }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: "#33261D" }}>{p.name}</p>
+                          <p className="text-xs" style={{ color: "#B8791A" }}>{formatToman(p.price)}</p>
+                        </div>
+                        <div className="flex items-center gap-1 mr-2">
+                          <button type="button" onClick={() => setQty(p.id, qty - 1)}
+                            className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-base transition-all"
+                            style={qty > 0
+                              ? { background: "#fee2e2", color: "#991b1b" }
+                              : { background: "#f3f4f6", color: "#9ca3af" }}>−</button>
+                          <span className="w-6 text-center text-sm font-bold" style={{ color: "#33261D" }}>
+                            {qty > 0 ? faNum(qty) : ""}
+                          </span>
+                          <button type="button" onClick={() => setQty(p.id, qty + 1)}
+                            className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-base transition-all"
+                            style={{ background: "#dcfce7", color: "#166534" }}>+</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {/* ستون راست: خلاصه */}
+            <div className="flex flex-col">
+              <div className="px-4 py-3 text-xs font-bold" style={{ color: "rgba(51,38,29,0.45)", background: "#faf6ef" }}>
+                سفارش جدید
+              </div>
+              <div className="flex-1 px-4 py-3">
+                {lines.length === 0
+                  ? <p className="text-sm text-center py-8" style={{ color: "rgba(51,38,29,0.35)" }}>هیچ آیتمی انتخاب نشده</p>
+                  : <ul className="space-y-2">
+                      {lines.map((line) => (
+                        <li key={line.product.id} className="flex items-center justify-between text-sm">
+                          <span style={{ color: "#33261D" }}>
+                            {line.product.name}
+                            <span style={{ color: "rgba(51,38,29,0.4)" }}> × {faNum(line.quantity)}</span>
+                          </span>
+                          <span className="font-semibold" style={{ color: "#B8791A" }}>
+                            {formatToman(line.product.price * line.quantity)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                }
+                <div className="mt-4 pt-3 border-t border-dashed" style={{ borderColor: "#e5e0d8" }}>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: "rgba(51,38,29,0.5)" }}>قبلاً:</span>
+                    <span style={{ color: "rgba(51,38,29,0.5)" }}>{formatToman(order.total_amount)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold mt-1">
+                    <span style={{ color: "#33261D" }}>جمع جدید:</span>
+                    <span style={{ color: newTotal > order.total_amount ? "#991b1b" : newTotal < order.total_amount ? "#166534" : "#B8791A" }}>
+                      {formatToman(newTotal)}
+                    </span>
+                  </div>
+                  {newTotal !== order.total_amount && (
+                    <div className="text-xs mt-1 text-left" style={{
+                      color: newTotal > order.total_amount ? "#991b1b" : "#166534"
+                    }}>
+                      {newTotal > order.total_amount ? "▲" : "▼"} {formatToman(Math.abs(newTotal - order.total_amount))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* فوتر */}
+        {err && (
+          <div className="mx-4 mb-2 rounded-xl px-4 py-2 text-sm" style={{ background: "#fef2f2", color: "#991b1b" }}>
+            {err}
+          </div>
+        )}
+        <div className="flex gap-3 px-5 py-4 border-t" style={{ borderColor: "#f0ebe3" }}>
+          <button type="button" onClick={onClose} disabled={busy}
+            className="flex-1 rounded-2xl py-3 text-sm font-bold transition-all disabled:opacity-50"
+            style={{ background: "#f3f4f6", color: "#6b7280" }}>انصراف</button>
+          <button type="button" onClick={save} disabled={busy || lines.length === 0}
+            className="flex-1 rounded-2xl py-3 text-sm font-bold text-white transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #E9A13B, #B8791A)" }}>
+            {busy ? "در حال ذخیره…" : "✓ تأیید و ذخیره"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ───────────────────────────── صفحه اصلی صندوق ─────────────────────────────
+
 export default function CashierPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("scan");
@@ -44,6 +235,9 @@ export default function CashierPage() {
   const [todayOrders, setTodayOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  // مودال ویرایش
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   const describeError = useCallback((e: unknown): string => {
     if (e instanceof ApiError && e.status === 401) {
@@ -127,6 +321,32 @@ export default function CashierPage() {
     todayOrders.filter((o) => o.status === "completed").reduce((sum, o) => sum + o.total_amount, 0),
     [todayOrders]);
 
+  // وقتی ویرایش تأیید شد
+  const handleEditSaved = (updated: Order) => {
+    setEditingOrder(null);
+    setScannedOrder((prev) => (prev?.id === updated.id ? updated : prev));
+    setSelectedOrder((prev) => (prev?.id === updated.id ? updated : prev));
+    setWalkInResult((prev) => (prev?.id === updated.id ? updated : prev));
+    setTodayOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+  };
+
+  // دکمه ویرایش سفارش
+  const EditBtn = ({ order }: { order: Order }) => {
+    const canEdit = EDITABLE_STATUSES.includes(order.status as OrderStatus);
+    if (!canEdit) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => { if (menu) setEditingOrder(order); }}
+        className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+        style={{ background: "#e0e7ff", color: "#3730a3" }}
+        title="ویرایش آیتم‌های سفارش"
+      >
+        <span>✏️</span> ویرایش سفارش
+      </button>
+    );
+  };
+
   return (
     <div className="mx-auto min-h-screen max-w-4xl px-4 py-6" dir="rtl">
       <PanelHeader title="پنل صندوق" />
@@ -172,13 +392,19 @@ export default function CashierPage() {
             </form>
           </div>
           <div>
-            {scannedOrder
-              ? <OrderCard order={scannedOrder} onStatusChange={changeStatus} busy={busy} />
-              : <div className="flex h-full min-h-52 items-center justify-center rounded-2xl text-center text-sm"
-                  style={{ border: "2px dashed #e5e0d8", color: "rgba(51,38,29,0.35)" }}>
-                  <div><span className="block text-4xl mb-3">📱</span>بعد از اسکن، سفارش اینجا نمایش داده می‌شود</div>
+            {scannedOrder ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-end">
+                  <EditBtn order={scannedOrder} />
                 </div>
-            }
+                <OrderCard order={scannedOrder} onStatusChange={changeStatus} busy={busy} />
+              </div>
+            ) : (
+              <div className="flex h-full min-h-52 items-center justify-center rounded-2xl text-center text-sm"
+                style={{ border: "2px dashed #e5e0d8", color: "rgba(51,38,29,0.35)" }}>
+                <div><span className="block text-4xl mb-3">📱</span>بعد از اسکن، سفارش اینجا نمایش داده می‌شود</div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -274,8 +500,11 @@ export default function CashierPage() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-bold" style={{ color: "#33261D" }}>جزئیات سفارش انتخاب‌شده</span>
-                <button type="button" onClick={() => setSelectedOrder(null)}
-                  className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن</button>
+                <div className="flex items-center gap-2">
+                  <EditBtn order={selectedOrder} />
+                  <button type="button" onClick={() => setSelectedOrder(null)}
+                    className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن</button>
+                </div>
               </div>
               <OrderCard order={selectedOrder} onStatusChange={changeStatus} busy={busy} />
             </div>
@@ -311,6 +540,16 @@ export default function CashierPage() {
               </div>
           }
         </div>
+      )}
+
+      {/* مودال ویرایش سفارش */}
+      {editingOrder && menu && (
+        <EditOrderModal
+          order={editingOrder}
+          menu={menu}
+          onClose={() => setEditingOrder(null)}
+          onSaved={handleEditSaved}
+        />
       )}
     </div>
   );

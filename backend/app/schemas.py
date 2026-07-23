@@ -48,7 +48,6 @@ class ProductOut(BaseModel):
     name: str
     description: str | None = None
     price: int
-    # آدرس عکس محصول (نسبی مثل /static/products/x.jpg) — در همه پاسخ‌ها برمی‌گردد
     image_url: str | None = None
     is_available: bool
     display_order: int
@@ -117,7 +116,6 @@ class OrderOut(BaseModel):
     total_amount: int
     created_at: datetime
     items: list[OrderItemOut]
-    # تصویر QR به‌صورت data URI — فقط در پاسخ‌های سمت مشتری پر می‌شود
     qr_image: str | None = None
 
 
@@ -135,3 +133,23 @@ class ImageUploadResult(BaseModel):
 
     image_url: str
     detail: str
+
+
+# ---------- ویرایش سفارش ----------
+
+
+class OrderEditIn(BaseModel):
+    """ورودی ویرایش سفارش — لیست کامل آیتم‌های جدید (جایگزین می‌شود)"""
+    items: list[OrderItemIn] = Field(min_length=1, description="لیست کامل آیتم‌های جدید")
+
+
+class OrderEditLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_id: int
+    before_snapshot: str
+    after_snapshot: str
+    old_total: int
+    new_total: int
+    edited_at: datetime

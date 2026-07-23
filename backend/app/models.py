@@ -19,6 +19,9 @@ ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "cancelled": set(),
 }
 
+# فقط این دو وضعیت قابل ویرایش هستند
+EDITABLE_STATUSES = {"pending", "preparing"}
+
 
 class Category(Base):
     """دسته‌بندی منو (آبمیوه، بستنی، دسر، شیرموز، قهوه، ...)"""
@@ -43,7 +46,6 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[int] = mapped_column(Integer, nullable=False)
-    # آدرس وبی عکس محصول مثل /static/products/abc.jpg — null یعنی عکس ندارد
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -63,7 +65,6 @@ class Order(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(16), unique=True, index=True, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
-    # online: ثبت از موبایل مشتری — walk_in: ثبت دستی صندوق
     source: Mapped[str] = mapped_column(String(20), default="online", nullable=False)
     customer_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -76,11 +77,13 @@ class Order(Base):
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
+    edit_logs: Mapped[list["OrderEditLog"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
 
 
 class OrderItem(Base):
-    """قلم سفارش — اسم و قیمت محصول در لحظه ثبت کپی (snapshot) می‌شود
-    تا تغییرات بعدی منو روی سفارش‌های قبلی اثر نگذارد."""
+    """قلم سفارش — اسم و قیمت محصول در لحظه ثبت کپی (snapshot) می‌شود"""
 
     __tablename__ = "order_items"
 
@@ -92,3 +95,20 @@ class OrderItem(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
     order: Mapped["Order"] = relationship(back_populates="items")
+
+
+class OrderEditLog(Base):
+    """تاریخچه ویرایش سفارش — هر بار که صندوقدار سفارشی را ویرایش می‌کند یک رکورد ثبت می‌شود"""
+
+    __tablename__ = "order_edit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
+    # snapshot قبل و بعد به صورت متن JSON
+    before_snapshot: Mapped[str] = mapped_column(Text, nullable=False)  # JSON
+    after_snapshot: Mapped[str] = mapped_column(Text, nullable=False)   # JSON
+    old_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    new_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    edited_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+
+    order: Mapped["Order"] = relationship(back_populates="edit_logs")
