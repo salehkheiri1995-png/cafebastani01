@@ -2,21 +2,139 @@
 @tailwind components;
 @tailwind utilities;
 
-/* پایه صفحه */
+/* ═══ پایه صفحه ═══ */
 body {
   @apply bg-cream font-vazir text-ink antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
 }
 
-/* خط پرفراژ رسید — امضای بصری پروژه */
+/* ═══ خط پرفراژ رسید — امضای بصری پروژه ═══ */
 .receipt-divider {
   border-top: 2px dashed #d8cbb8;
 }
 
-/* اسکرول افقی بدون نوار اسکرول (تب‌های دسته‌بندی) */
+/* ═══ اسکرول افقی بدون نوار اسکرول ═══ */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* ═══ انیمیشن‌های منو ═══ */
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-8px) rotate(3deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(233, 161, 59, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(233, 161, 59, 0); }
+}
+
+@keyframes bounce-in {
+  0% { transform: scale(0.8); opacity: 0; }
+  60% { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.4s ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.3s ease-out both;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.3s ease-out both;
+}
+
+/* ═══ تاخیرهای انیمیشن برای لیست محصولات ═══ */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+
+/* ═══ افکت شیشه‌ای ═══ */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ═══ سایه‌های سفارشی ═══ */
+.shadow-soft {
+  box-shadow: 0 2px 12px rgba(51, 38, 29, 0.08);
+}
+
+.shadow-warm {
+  box-shadow: 0 4px 20px rgba(184, 121, 26, 0.15);
+}
+
+.shadow-elevated {
+  box-shadow: 0 8px 30px rgba(51, 38, 29, 0.12);
+}
+
+/* ═══ گرادینت‌های سفارشی ═══ */
+.gradient-saffron {
+  background: linear-gradient(135deg, #E9A13B 0%, #B8791A 100%);
+}
+
+.gradient-header {
+  background: linear-gradient(160deg, #E9A13B 0%, #C48A20 30%, #8B5E14 60%, #33261D 100%);
+}
+
+/* ═══ افکت‌های تعاملی ═══ */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hover-lift:active {
+  transform: scale(0.97);
+}
+
+/* ═══ متن یک خطی با dot indicator ═══ */
+.text-clamp-1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ═══ پس‌زمینه نقاط تزئینی ═══ */
+.dot-pattern {
+  background-image: radial-gradient(circle, rgba(233, 161, 59, 0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
