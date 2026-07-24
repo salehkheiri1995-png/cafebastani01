@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..database import get_db
 from ..qr import make_qr_base64
+from ..runtime_settings import runtime_settings
 from ..schemas import OrderCreate, OrderOut
 from ..services import create_order
 from ..ws_manager import ws_manager
@@ -25,6 +26,11 @@ async def place_order(body: OrderCreate, db: Session = Depends(get_db)):
     """ثبت سفارش آنلاین مشتری — وضعیت اولیه pending.
     در پاسخ، تصویر QR کد سفارش هم برمی‌گردد تا به مشتری نمایش داده شود.
     همچنین اعلان WebSocket به پنل صندوق ارسال می‌شود."""
+    if not runtime_settings.is_open:
+        raise HTTPException(
+            status_code=503,
+            detail="کافه در حال حاضر پذیرش سفارش ندارد",
+        )
     order = create_order(db, body, source="online", status="pending")
 
     # ارسال اعلان WebSocket به همه کلاینت‌های متصل

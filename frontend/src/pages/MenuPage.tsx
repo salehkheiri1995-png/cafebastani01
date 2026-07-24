@@ -200,8 +200,13 @@ export default function MenuPage() {
       });
       navigate(`/order/${order.code}`);
     } catch (e) {
-      setSubmitError(e instanceof ApiError ? e.message : "ثبت سفارش ناموفق بود — دوباره تلاش کنید");
-      loadMenu(true);
+      if (e instanceof ApiError && e.status === 503) {
+        setCheckoutOpen(false);
+        setLoadError("__CLOSED__");
+      } else {
+        setSubmitError(e instanceof ApiError ? e.message : "ثبت سفارش ناموفق بود — دوباره تلاش کنید");
+        loadMenu(true);
+      }
     } finally {
       setSubmitting(false);
     }

@@ -282,6 +282,12 @@ export default function AdminDashboard() {
                 >
                   <td className="px-4 py-3 font-mono font-bold" style={{ color: "#B8791A" }}>
                     {o.code}
+                    {o.queue_number && (
+                      <span className="inline-flex items-center justify-center rounded-full px-2 py-0.5 ms-1 text-[10px] font-bold text-white"
+                        style={{ background: "#E9A13B", minWidth: 24 }}>
+                        #{faNum(o.queue_number)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3" style={{ color: "#33261D" }}>
                     {o.customer_name || <span style={{ color: "rgba(51,38,29,0.25)" }}>—</span>}

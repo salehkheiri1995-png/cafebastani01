@@ -154,6 +154,15 @@ function printReceipt(order: Order) {
     <span>${order.customer_name}</span>
   </div>` : ""}
 
+  ${order.queue_number ? `
+  <div style="text-align:center;margin:8px 0;padding:8px;
+    background:linear-gradient(135deg,#E9A13B,#B8791A);
+    border-radius:8px;">
+    <div style="font-size:10px;color:rgba(255,255,255,0.8);">شماره نوبت</div>
+    <div style="font-size:28px;font-weight:900;color:white;
+      direction:rtl;">${faNum(order.queue_number)}</div>
+  </div>` : ""}
+
   <hr class="divider"/>
 
   <table>

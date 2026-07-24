@@ -63,13 +63,11 @@ export default function AdminPage() {
   // دریافت وضعیت فعلی کافه
   const checkCafeStatus = useCallback(async () => {
     try {
-      // اگر منو بارگذاری شد یعنی کافه باز است
-      await api.get<MenuCategory[]>("/api/menu");
-      setIsCafeOpen(true);
+      const res = await api.get<ToggleResult>("/api/admin/settings/status");
+      setIsCafeOpen(res.is_open);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 503) {
-        setIsCafeOpen(false);
-      }
+      // در صورت خطا وضعیت نامشخص — نمایش پیش‌فرض باز
+      setIsCafeOpen(true);
     }
   }, []);
 

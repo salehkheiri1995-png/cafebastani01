@@ -236,3 +236,12 @@ def toggle_cafe_status():
         is_open=new_status,
         detail="کافه باز شد" if new_status else "کافه بسته شد",
     )
+
+
+@router.get("/settings/status", response_model=ToggleResult)
+def get_cafe_status():
+    """دریافت وضعیت فعلی کافه بدون تغییر"""
+    return ToggleResult(
+        is_open=runtime_settings.is_open,
+        detail="کافه باز است" if runtime_settings.is_open else "کافه بسته است",
+    )

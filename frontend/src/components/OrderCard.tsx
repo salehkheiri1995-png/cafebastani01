@@ -35,8 +35,18 @@ export default function OrderCard({ order, onStatusChange, busy }: Props) {
       {/* سربرگ رسید */}
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
-          <div className="font-mono text-lg font-bold tracking-widest" dir="ltr">
-            {order.code}
+          <div className="flex items-center gap-2">
+            <div className="font-mono text-lg font-bold tracking-widest" dir="ltr">
+              {order.code}
+            </div>
+            {order.queue_number && (
+              <div className="flex items-center gap-1 rounded-xl px-3 py-1.5"
+                style={{ background: "linear-gradient(135deg,#E9A13B,#B8791A)" }}>
+                <span className="text-xs text-white/70">نوبت</span>
+                <span className="text-xl font-black text-white"
+                  dir="ltr">{faNum(order.queue_number)}</span>
+              </div>
+            )}
           </div>
           <div className="mt-1 text-xs text-gray-500">
             {formatTime(order.created_at)} —{" "}
