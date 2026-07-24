@@ -155,13 +155,13 @@ function printReceipt(order: Order) {
   </div>` : ""}
 
   ${order.queue_number ? `
-  <div style="text-align:center;margin:8px 0;padding:8px;
-    background:linear-gradient(135deg,#E9A13B,#B8791A);
-    border-radius:8px;">
-    <div style="font-size:10px;color:rgba(255,255,255,0.8);">شماره نوبت</div>
-    <div style="font-size:28px;font-weight:900;color:white;
-      direction:rtl;">${faNum(order.queue_number)}</div>
-  </div>` : ""}
+  <div style="margin:8px 0;padding:10px;background:linear-gradient(135deg,#E9A13B,#B8791A);
+    border-radius:8px;text-align:center;">
+    <div style="font-size:10px;color:rgba(255,255,255,0.8);">شماره نوبت شما</div>
+    <div style="font-size:32px;font-weight:900;color:white;direction:rtl;
+      font-family:'Vazirmatn',Tahoma,Arial,sans-serif;">${faNum(order.queue_number)}</div>
+  </div>
+  <hr class="divider"/>` : ""}
 
   <hr class="divider"/>
 
@@ -787,7 +787,7 @@ export default function CashierPage() {
                 <div className="flex items-center justify-end">
                   <EditBtn order={scannedOrder} />
                 </div>
-                <OrderCard order={scannedOrder} onStatusChange={changeStatus} busy={busy} />
+                <OrderCard order={scannedOrder} onStatusChange={changeStatus} onPaymentRequest={setPaymentOrder} busy={busy} />
                 <ConfirmAndPrint order={scannedOrder} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
               </div>
             ) : (
@@ -854,7 +854,7 @@ export default function CashierPage() {
                   <button type="button" onClick={() => setWalkInResult(null)}
                     className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن رسید</button>
                 </div>
-                <OrderCard order={walkInResult} onStatusChange={changeStatus} busy={busy} />
+                <OrderCard order={walkInResult} onStatusChange={changeStatus} onPaymentRequest={setPaymentOrder} busy={busy} />
                 <ConfirmAndPrint order={walkInResult} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
               </div>
             )}
@@ -896,7 +896,7 @@ export default function CashierPage() {
                     className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن</button>
                 </div>
               </div>
-              <OrderCard order={selectedOrder} onStatusChange={changeStatus} busy={busy} />
+              <OrderCard order={selectedOrder} onStatusChange={changeStatus} onPaymentRequest={setPaymentOrder} busy={busy} />
               <ConfirmAndPrint order={selectedOrder} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
             </div>
           )}

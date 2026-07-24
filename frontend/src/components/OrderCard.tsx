@@ -6,6 +6,7 @@ interface Props {
   order: Order;
   // اگر پاس داده شود، دکمه‌های تغییر وضعیت نمایش داده می‌شوند (پنل صندوق)
   onStatusChange?: (orderId: number, status: OrderStatus) => void;
+  onPaymentRequest?: (order: Order) => void;
   busy?: boolean;
 }
 
@@ -27,7 +28,7 @@ const ACTIONS: Partial<
 };
 
 // کارت کامل سفارش به سبک رسید — اقلام، جمع کل و اطلاعات مشتری
-export default function OrderCard({ order, onStatusChange, busy }: Props) {
+export default function OrderCard({ order, onStatusChange, onPaymentRequest, busy }: Props) {
   const actions = onStatusChange ? ACTIONS[order.status] ?? [] : [];
 
   return (
@@ -100,7 +101,13 @@ export default function OrderCard({ order, onStatusChange, busy }: Props) {
               key={action.next}
               type="button"
               disabled={busy}
-              onClick={() => onStatusChange?.(order.id, action.next)}
+              onClick={() => {
+                if (action.next === "completed" && onPaymentRequest) {
+                  onPaymentRequest(order);
+                } else {
+                  onStatusChange?.(order.id, action.next);
+                }
+              }}
               className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition-opacity disabled:opacity-50 ${action.style}`}
             >
               {action.label}
