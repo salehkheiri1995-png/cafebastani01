@@ -16,3 +16,4 @@ frontend/dist/
 # پکیج و اینستالر
 dist/
 installer-output/
+packages/

@@ -20,7 +20,16 @@ if %errorlevel% neq 0 (
 
 call venv\Scripts\activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+
+:: Install from local packages folder (offline)
+if exist "..\packages" (
+    echo  Installing from local packages...
+    python -m pip install --no-index --find-links="..\packages" -r requirements.txt
+) else (
+    echo  No local packages found, downloading from internet...
+    python -m pip install -r requirements.txt
+)
+
 if %errorlevel% neq 0 (
     echo.
     echo  ERROR: Failed to install packages!
