@@ -5,8 +5,9 @@ from datetime import datetime, time, timedelta
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import models  # noqa: F401 — لازم برای ثبت مدل‌ها قبل از create_all
@@ -22,6 +23,7 @@ from .ws_manager import ws_manager
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BACKEND_DIR / "cafe.db"
 BACKUPS_DIR = BACKEND_DIR / "backups"
+FRONTEND_DIR = BACKEND_DIR / "static" / "frontend"
 
 # ── زمان‌بند اجرای پس‌زمینه ──
 scheduler = BackgroundScheduler()
@@ -124,11 +126,6 @@ app.include_router(cashier.router)
 app.include_router(admin.router)
 app.include_router(reports.router)
 
-# سرو کردن فایل‌های استاتیک (عکس محصولات) از backend/static
-# ensure_dirs قبل از mount لازم است چون StaticFiles وجود پوشه را همان لحظه چک می‌کند
-ensure_dirs()
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
 
 @app.get("/api/health")
 def health():
@@ -148,3 +145,28 @@ async def websocket_orders(websocket: WebSocket):
         ws_manager.disconnect(websocket)
     except Exception:
         ws_manager.disconnect(websocket)
+
+
+# سرو کردن فایل‌های استاتیک (عکس محصولات) از backend/static
+# ensure_dirs قبل از mount لازم است چون StaticFiles وجود پوشه را همان لحظه چک می‌کند
+ensure_dirs()
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# ── سرو کردن فرانت ساخته‌شده در حالت production ──
+# این بلوک باید آخرین باشد تا همه API و WebSocket ابتدا بررسی شوند
+if FRONTEND_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets")), name="frontend_assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(request: Request, full_path: str):
+        """سرو کردن فایل‌های فرانت یا index.html برای مسیرهای SPA"""
+        # اگر فایل در فرانت وجود دارد، آن را برگردان
+        file_path = FRONTEND_DIR / full_path
+        if full_path and file_path.is_file():
+            return FileResponse(str(file_path))
+        # در غیر این صورت index.html را برگردان (برای React Router)
+        index = FRONTEND_DIR / "index.html"
+        if index.is_file():
+            return FileResponse(str(index))
+        return {"detail": "not found"}
