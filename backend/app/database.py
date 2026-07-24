@@ -28,13 +28,29 @@ def get_db():
 def run_sqlite_migrations(db_engine: Engine) -> None:
     """migration سبک برای SQLite (بدون Alembic).
 
-    دیتابیس‌های قدیمی که قبل از قابلیت عکس ساخته شده‌اند، ستون image_url
-    ندارند — این تابع در استارت برنامه به‌صورت خودکار اضافه‌اش می‌کند.
+    دیتابیس‌های قدیمی که قبل از قابلیت‌های جدید ساخته شده‌اند، ستون‌های جدید
+    ندارند — این تابع در استارت برنامه به‌صورت خودکار اضافه‌شان می‌کند.
     اجرای چندباره‌اش بی‌خطر است."""
     inspector = inspect(db_engine)
     if "products" not in inspector.get_table_names():
         return  # جدول هنوز ساخته نشده — create_all با ستون جدید می‌سازد
-    columns = {col["name"] for col in inspector.get_columns("products")}
-    if "image_url" not in columns:
+
+    # ── migration برای جدول products ──
+    product_columns = {col["name"] for col in inspector.get_columns("products")}
+    if "image_url" not in product_columns:
         with db_engine.begin() as conn:
             conn.execute(text("ALTER TABLE products ADD COLUMN image_url VARCHAR(500)"))
+
+    # ── migration برای جدول orders ──
+    if "orders" not in inspector.get_table_names():
+        return
+    order_columns = {col["name"] for col in inspector.get_columns("orders")}
+    if "payment_method" not in order_columns:
+        with db_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE orders ADD COLUMN payment_method VARCHAR(20)"))
+    if "queue_number" not in order_columns:
+        with db_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE orders ADD COLUMN queue_number INTEGER"))
+    if "idempotency_key" not in order_columns:
+        with db_engine.begin() as conn:
+            conn.execute(text("ALTER TABLE orders ADD COLUMN idempotency_key VARCHAR(64)"))

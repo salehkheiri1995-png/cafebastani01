@@ -1,7 +1,7 @@
 """مدل‌های دیتابیس — طبق spec.md"""
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -63,6 +63,11 @@ class Order(Base):
     """سفارش — کد یکتای آن محتوای QR کد است"""
 
     __tablename__ = "orders"
+    __table_args__ = (
+        Index("ix_order_status", "status"),
+        Index("ix_order_created_at", "created_at"),
+        Index("ix_order_code", "code", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(16), unique=True, index=True, nullable=False)
@@ -71,6 +76,9 @@ class Order(Base):
     customer_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    queue_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, onupdate=datetime.now

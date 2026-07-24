@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..auth import require_auth
+from ..auth import require_role
 from ..database import get_db
 from ..schemas import (
     CategoryCreate,
@@ -23,7 +23,7 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 router = APIRouter(
     prefix="/api/admin",
     tags=["admin"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_role("admin"))],
 )
 
 # ---------------- دسته‌ها ----------------
@@ -219,3 +219,20 @@ def remove_product_image(
     product.image_url = None
     db.commit()
     return DeleteResult(deleted=True, detail="عکس حذف شد")
+
+
+# ---------------- تنظیمات ----------------
+
+
+from ..runtime_settings import runtime_settings
+from ..schemas import ToggleResult
+
+
+@router.patch("/settings/toggle", response_model=ToggleResult)
+def toggle_cafe_status():
+    """toggle حالت باز/بسته بودن کافه"""
+    new_status = runtime_settings.toggle_is_open()
+    return ToggleResult(
+        is_open=new_status,
+        detail="کافه باز شد" if new_status else "کافه بسته شد",
+    )

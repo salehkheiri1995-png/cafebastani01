@@ -77,6 +77,8 @@ def update_status(order_id: int, body: StatusUpdate, db: Session = Depends(get_d
         )
 
     order.status = body.status
+    if body.payment_method:
+        order.payment_method = body.payment_method
     db.commit()
     db.refresh(order)
     return order_to_out(order, with_qr=False)

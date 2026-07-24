@@ -126,7 +126,13 @@ export default function MenuPage() {
         return next;
       });
     } catch (e) {
-      if (!silent) setLoadError(e instanceof ApiError ? e.message : "خطا در دریافت منو");
+      if (!silent) {
+        if (e instanceof ApiError && e.status === 503) {
+          setLoadError("__CLOSED__");
+        } else {
+          setLoadError(e instanceof ApiError ? e.message : "خطا در دریافت منو");
+        }
+      }
     }
   }, []);
 
@@ -306,12 +312,35 @@ export default function MenuPage() {
       <main className="space-y-8 px-4 pt-4">
 
         {/* خطا */}
-        {loadError && (
+        {loadError && loadError !== "__CLOSED__" && (
           <div className="animate-fade-in-up flex items-center gap-3 rounded-2xl bg-berry-light p-4 text-sm text-berry shadow-soft">
             <span className="text-xl">⚠️</span>
             <span className="flex-1 font-medium">{loadError}</span>
             <button type="button" onClick={() => loadMenu()}
               className="rounded-xl bg-berry px-4 py-2 text-xs font-bold text-white transition-all hover:bg-berry/90 active:scale-95">
+              تلاش دوباره
+            </button>
+          </div>
+        )}
+
+        {/* حالت تعطیل */}
+        {loadError === "__CLOSED__" && (
+          <div className="animate-fade-in-up flex flex-col items-center py-20 gap-5">
+            <span className="text-7xl animate-float">😴</span>
+            <div className="text-center">
+              <p className="text-xl font-black" style={{ color: "#33261D" }}>
+                کافه بسته است!
+              </p>
+              <p className="mt-2 text-sm" style={{ color: "rgba(51,38,29,0.5)" }}>
+                در حال حاضر پذیرش سفارش نداریم
+              </p>
+              <p className="mt-1 text-xs" style={{ color: "rgba(51,38,29,0.35)" }}>
+                لطفاً بعداً دوباره سر بزنید 🙏
+              </p>
+            </div>
+            <button type="button" onClick={() => loadMenu()}
+              className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-all active:scale-95"
+              style={{ background: "linear-gradient(135deg, #E9A13B, #B8791A)" }}>
               تلاش دوباره
             </button>
           </div>

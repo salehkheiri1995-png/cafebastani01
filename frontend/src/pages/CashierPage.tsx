@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, clearToken } from "../api/client";
 import OrderCard from "../components/OrderCard";
@@ -377,21 +377,23 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
 // ───────────────────── کامپوننت دکمه‌های تایید و پرینت ─────────────────────
 interface ConfirmAndPrintProps {
   order: Order;
-  onStatusChange: (orderId: number, status: OrderStatus) => Promise<void>;
+  onStatusChange: (orderId: number, status: OrderStatus, paymentMethod?: string) => Promise<void>;
   busy: boolean;
+  onPaymentRequest: (order: Order) => void;
 }
 
-function ConfirmAndPrint({ order, onStatusChange, busy }: ConfirmAndPrintProps) {
+function ConfirmAndPrint({ order, onStatusChange, busy, onPaymentRequest }: ConfirmAndPrintProps) {
   const [confirming, setConfirming] = useState(false);
 
   const handleConfirmAndPrint = async () => {
     setConfirming(true);
     try {
-      // اگر سفارش هنوز completed نیست، اول تایید کن
+      // اگر سفارش هنوز completed نیست، ابتدا مودال پرداخت نشان بده
       if (order.status !== "completed") {
-        await onStatusChange(order.id, "completed");
+        onPaymentRequest(order);
+        return;
       }
-      // بعد پرینت بگیر
+      // اگر قبلاً تکمیل شده، فقط پرینت بگیر
       printReceipt(order);
     } finally {
       setConfirming(false);
@@ -424,6 +426,11 @@ function ConfirmAndPrint({ order, onStatusChange, busy }: ConfirmAndPrintProps) 
         <div className="flex flex-1 items-center gap-2 rounded-2xl px-4 py-2.5"
           style={{ background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
           <span className="text-green-600 font-bold text-sm">✓ تحویل و تسویه شد</span>
+          {order.payment_method && (
+            <span className="text-xs" style={{ color: "rgba(51,38,29,0.4)" }}>
+              ({order.payment_method === "cash" ? "نقدی" : "کارتخوان"})
+            </span>
+          )}
         </div>
       )}
       <button
@@ -442,6 +449,104 @@ function ConfirmAndPrint({ order, onStatusChange, busy }: ConfirmAndPrintProps) 
 }
 
 // ───────────────────────────── صفحه اصلی صندوق ─────────────────────────────
+
+// ── تابع پخش صدای اعلان ──
+function playNotificationSound() {
+  try {
+    const ctx = new AudioContext();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+    oscillator.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.3);
+  } catch { /* AudioContext ممکن است در دسترس نباشد */ }
+}
+
+// ── مودال انتخاب روش پرداخت ──
+interface PaymentModalProps {
+  order: Order;
+  onPayment: (method: string) => void;
+  onClose: () => void;
+  busy: boolean;
+}
+
+function PaymentModal({ order, onPayment, onClose, busy }: PaymentModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.45)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="w-full max-w-sm rounded-3xl bg-white p-6 text-center"
+        style={{ boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
+      >
+        <span className="text-4xl">💳</span>
+        <h2 className="mt-3 text-lg font-bold" style={{ color: "#33261D" }}>
+          روش پرداخت
+        </h2>
+        <p className="mt-1 text-sm" style={{ color: "rgba(51,38,29,0.5)" }}>
+          مبلغ: <span className="font-bold" style={{ color: "#B8791A" }}>{formatToman(order.total_amount)}</span>
+        </p>
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onPayment("cash")}
+            className="flex-1 rounded-2xl py-3.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #2F7D5D, #1a5c3a)" }}
+          >
+            💵 نقدی
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onPayment("card")}
+            className="flex-1 rounded-2xl py-3.5 text-sm font-bold text-white transition-all disabled:opacity-50"
+            style={{ background: "linear-gradient(135deg, #1d4ed8, #1e40af)" }}
+          >
+            💳 کارتخوان
+          </button>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={onClose}
+          className="mt-3 w-full rounded-xl py-2.5 text-sm font-bold transition-all"
+          style={{ color: "rgba(51,38,29,0.4)" }}
+        >
+          انصراف
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Toast notification ──
+function Toast({ message, onClose }: { message: string; onClose: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 animate-fade-in-up">
+      <div
+        className="flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-bold text-white shadow-lg"
+        style={{ background: "linear-gradient(135deg, #2F7D5D, #1a5c3a)" }}
+      >
+        <span className="text-lg">🔔</span>
+        <span>{message}</span>
+      </div>
+    </div>
+  );
+}
 
 export default function CashierPage() {
   const navigate = useNavigate();
@@ -464,6 +569,13 @@ export default function CashierPage() {
 
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
+  // ── وضعیت WebSocket و Toast ──
+  const [toast, setToast] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // ── وضعیت مودال پرداخت ──
+  const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
+
   const describeError = useCallback((e: unknown): string => {
     if (e instanceof ApiError && e.status === 401) {
       clearToken(); navigate("/login", { state: { from: "/cashier" } });
@@ -484,10 +596,12 @@ export default function CashierPage() {
 
   const submitManualCode = (e: FormEvent) => { e.preventDefault(); fetchByCode(manualCode); };
 
-  const changeStatus = async (orderId: number, status: OrderStatus) => {
+  const changeStatus = async (orderId: number, status: OrderStatus, paymentMethod?: string) => {
     setBusy(true); setError(null);
     try {
-      const updated = await api.patch<Order>(`/api/cashier/orders/${orderId}/status`, { status });
+      const body: { status: string; payment_method?: string } = { status };
+      if (paymentMethod) body.payment_method = paymentMethod;
+      const updated = await api.patch<Order>(`/api/cashier/orders/${orderId}/status`, body);
       setScannedOrder((prev) => (prev?.id === orderId ? updated : prev));
       setSelectedOrder((prev) => (prev?.id === orderId ? updated : prev));
       setWalkInResult((prev) => (prev?.id === orderId ? updated : prev));
@@ -541,6 +655,50 @@ export default function CashierPage() {
     const timer = setInterval(() => loadToday(true), 15_000);
     return () => clearInterval(timer);
   }, [tab, loadToday]);
+
+  // ── اتصال WebSocket برای اعلان سفارش جدید ──
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws/orders`;
+
+    const connect = () => {
+      try {
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === "new_order") {
+              // رفرش لیست سفارش‌های امروز
+              loadToday(true);
+              // پخش صدای اعلان
+              playNotificationSound();
+              // نمایش toast
+              setToast(`🔔 سفارش جدید رسید! کد: ${data.code}`);
+            }
+          } catch { /* پیام نامعتبر */ }
+        };
+
+        ws.onclose = () => {
+          // اتصال مجدد بعد از ۳ ثانیه
+          setTimeout(connect, 3000);
+        };
+
+        ws.onerror = () => {
+          ws.close();
+        };
+      } catch {
+        setTimeout(connect, 3000);
+      }
+    };
+
+    connect();
+
+    return () => {
+      wsRef.current?.close();
+    };
+  }, [loadToday]);
 
   const todayTotal = useMemo(() =>
     todayOrders.filter((o) => o.status === "completed").reduce((sum, o) => sum + o.total_amount, 0),
@@ -621,7 +779,7 @@ export default function CashierPage() {
                   <EditBtn order={scannedOrder} />
                 </div>
                 <OrderCard order={scannedOrder} onStatusChange={changeStatus} busy={busy} />
-                <ConfirmAndPrint order={scannedOrder} onStatusChange={changeStatus} busy={busy} />
+                <ConfirmAndPrint order={scannedOrder} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
               </div>
             ) : (
               <div className="flex h-full min-h-52 items-center justify-center rounded-2xl text-center text-sm"
@@ -688,7 +846,7 @@ export default function CashierPage() {
                     className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن رسید</button>
                 </div>
                 <OrderCard order={walkInResult} onStatusChange={changeStatus} busy={busy} />
-                <ConfirmAndPrint order={walkInResult} onStatusChange={changeStatus} busy={busy} />
+                <ConfirmAndPrint order={walkInResult} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
               </div>
             )}
           </div>
@@ -730,7 +888,7 @@ export default function CashierPage() {
                 </div>
               </div>
               <OrderCard order={selectedOrder} onStatusChange={changeStatus} busy={busy} />
-              <ConfirmAndPrint order={selectedOrder} onStatusChange={changeStatus} busy={busy} />
+              <ConfirmAndPrint order={selectedOrder} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
             </div>
           )}
 
@@ -746,6 +904,12 @@ export default function CashierPage() {
                     style={{ borderBottom: "1px solid #f7f3ee" }}>
                     <div className="flex items-center gap-3">
                       <span className="font-mono text-sm font-bold" style={{ color: "#B8791A" }} dir="ltr">{order.code}</span>
+                      {order.queue_number && (
+                        <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white"
+                          style={{ background: "#E9A13B" }}>
+                          #{faNum(order.queue_number)}
+                        </span>
+                      )}
                       <span className="text-xs" style={{ color: "rgba(51,38,29,0.45)" }}>{formatTime(order.created_at)}</span>
                       {order.customer_name && <span className="text-xs" style={{ color: "rgba(51,38,29,0.55)" }}>{order.customer_name}</span>}
                       <span className="rounded-full px-2 py-0.5 text-[10px] font-medium"
@@ -775,6 +939,22 @@ export default function CashierPage() {
           onSaved={handleEditSaved}
         />
       )}
+
+      {/* مودال انتخاب روش پرداخت */}
+      {paymentOrder && (
+        <PaymentModal
+          order={paymentOrder}
+          busy={busy}
+          onClose={() => setPaymentOrder(null)}
+          onPayment={async (method) => {
+            await changeStatus(paymentOrder.id, "completed", method);
+            setPaymentOrder(null);
+          }}
+        />
+      )}
+
+      {/* Toast notification */}
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }

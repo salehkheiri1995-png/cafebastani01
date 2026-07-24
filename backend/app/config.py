@@ -5,14 +5,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # رمز ورود پنل صندوق و مدیریت
-    panel_password: str = "cafe1234"
+    # رمز ورود پنل صندوق
+    cashier_password: str = "cafe1234"
+    # رمز ورود پنل مدیریت
+    admin_password: str = "admin1234"
     # کلید امضای توکن JWT — در محیط واقعی حتماً عوض شود
     secret_key: str = "dev-secret-change-me"
     # مدت اعتبار توکن به ساعت
     token_expire_hours: int = 12
     # آدرس‌های مجاز فرانت برای CORS (با کاما جدا می‌شوند)
     cors_origins: str = "http://localhost:5173"
+    # حالت تعطیل کافه
+    is_open: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

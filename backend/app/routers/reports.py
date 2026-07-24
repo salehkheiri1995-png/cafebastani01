@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..auth import require_auth
+from ..auth import require_role
 from ..database import get_db
 from ..schemas import OrderOut
 from .orders import order_to_out
@@ -15,7 +15,7 @@ from .orders import order_to_out
 router = APIRouter(
     prefix="/api/reports",
     tags=["reports"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_role("admin"))],
 )
 
 
@@ -285,3 +285,91 @@ def export_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------- داشبورد ----------------
+
+
+@router.get("/dashboard/today")
+def dashboard_today(db: Session = Depends(get_db)):
+    """آمار امروز: تعداد سفارش، درآمد، میانگین مبلغ"""
+    start_of_today = datetime.combine(datetime.now().date(), time.min)
+    end_of_today = datetime.combine(datetime.now().date(), time.max)
+    orders = (
+        db.query(models.Order)
+        .filter(models.Order.created_at >= start_of_today)
+        .filter(models.Order.created_at <= end_of_today)
+        .all()
+    )
+    completed = [o for o in orders if o.status == "completed"]
+    total_revenue = sum(o.total_amount for o in completed)
+    avg_amount = total_revenue // len(completed) if completed else 0
+    return {
+        "total_orders": len(orders),
+        "completed_orders": len(completed),
+        "total_revenue": total_revenue,
+        "avg_amount": avg_amount,
+    }
+
+
+@router.get("/dashboard/revenue-week")
+def dashboard_revenue_week(db: Session = Depends(get_db)):
+    """درآمد ۷ روز اخیر (روزانه)"""
+    result = []
+    for i in range(6, -1, -1):
+        day = datetime.now().date() - timedelta(days=i)
+        start = datetime.combine(day, time.min)
+        end = datetime.combine(day, time.max)
+        orders = (
+            db.query(models.Order)
+            .filter(models.Order.created_at >= start)
+            .filter(models.Order.created_at <= end)
+            .filter(models.Order.status == "completed")
+            .all()
+        )
+        revenue = sum(o.total_amount for o in orders)
+        result.append({
+            "date": day.strftime("%Y-%m-%d"),
+            "label": day.strftime("%m/%d"),
+            "revenue": revenue,
+            "count": len(orders),
+        })
+    return result
+
+
+@router.get("/dashboard/top-products")
+def dashboard_top_products(db: Session = Depends(get_db)):
+    """۵ محصول پرفروش (بر اساس تعداد فروخته‌شده)"""
+    from sqlalchemy import func
+
+    start_of_today = datetime.combine(datetime.now().date(), time.min)
+    results = (
+        db.query(
+            models.OrderItem.product_name,
+            func.sum(models.OrderItem.quantity).label("total_qty"),
+            func.sum(models.OrderItem.unit_price * models.OrderItem.quantity).label("total_revenue"),
+        )
+        .join(models.Order, models.OrderItem.order_id == models.Order.id)
+        .filter(models.Order.created_at >= start_of_today)
+        .filter(models.Order.status.in_(["completed", "ready", "preparing"]))
+        .group_by(models.OrderItem.product_name)
+        .order_by(func.sum(models.OrderItem.quantity).desc())
+        .limit(5)
+        .all()
+    )
+    return [
+        {"name": r.product_name, "quantity": r.total_qty, "revenue": r.total_revenue}
+        for r in results
+    ]
+
+
+@router.get("/dashboard/recent-orders")
+def dashboard_recent_orders(db: Session = Depends(get_db)):
+    """۱۰ سفارش اخیر"""
+    orders = (
+        db.query(models.Order)
+        .order_by(models.Order.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [order_to_out(o, with_qr=False) for o in orders]

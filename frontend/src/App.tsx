@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { getToken } from "./api/client";
 import AdminPage from "./pages/AdminPage";
+import AdminDashboard from "./pages/AdminDashboard";
 import CashierPage from "./pages/CashierPage";
 import LoginPage from "./pages/LoginPage";
 import MenuPage from "./pages/MenuPage";
@@ -45,6 +46,14 @@ export default function App() {
           element={
             <RequireAuth>
               <AdminPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin/dashboard"
+          element={
+            <RequireAuth>
+              <AdminDashboard />
             </RequireAuth>
           }
         />

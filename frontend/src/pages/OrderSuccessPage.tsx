@@ -63,6 +63,17 @@ export default function OrderSuccessPage() {
             این QR را داخل کافه به صندوق نشان بده
           </p>
 
+          {/* شماره صف */}
+          {order.queue_number && (
+            <div className="mt-4 rounded-2xl px-5 py-3"
+              style={{ background: "linear-gradient(135deg, #E9A13B, #B8791A)" }}>
+              <p className="text-xs font-medium text-white/70">شماره صف شما</p>
+              <p className="text-4xl font-black text-white" dir="ltr">
+                {faNum(order.queue_number)}
+              </p>
+            </div>
+          )}
+
           {order.qr_image && (
             <img
               src={order.qr_image}

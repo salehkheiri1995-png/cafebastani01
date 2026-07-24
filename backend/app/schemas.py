@@ -93,6 +93,7 @@ class OrderCreate(BaseModel):
     items: list[OrderItemIn] = Field(min_length=1)
     customer_name: str | None = Field(default=None, max_length=100)
     note: str | None = Field(default=None, max_length=500)
+    idempotency_key: str | None = Field(default=None, max_length=64)
 
 
 class OrderItemOut(BaseModel):
@@ -117,10 +118,13 @@ class OrderOut(BaseModel):
     created_at: datetime
     items: list[OrderItemOut]
     qr_image: str | None = None
+    payment_method: str | None = None
+    queue_number: int | None = None
 
 
 class StatusUpdate(BaseModel):
     status: str
+    payment_method: str | None = None
 
 
 class DeleteResult(BaseModel):
@@ -132,6 +136,13 @@ class ImageUploadResult(BaseModel):
     """پاسخ آپلود موفق عکس محصول"""
 
     image_url: str
+    detail: str
+
+
+class ToggleResult(BaseModel):
+    """پاسخ toggle حالت تعطیلی"""
+
+    is_open: bool
     detail: str
 
 

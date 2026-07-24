@@ -24,6 +24,9 @@ export default function PanelHeader({ title }: { title: string }) {
           <Link to="/admin" className="rounded-lg px-3 py-1.5 hover:bg-white">
             مدیریت منو
           </Link>
+          <Link to="/admin/dashboard" className="rounded-lg px-3 py-1.5 hover:bg-white">
+            📊 داشبورد
+          </Link>
           <Link to="/reports" className="rounded-lg px-3 py-1.5 hover:bg-white">
             گزارش‌ها
           </Link>

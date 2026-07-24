@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type ChangeEvent,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ChangeEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, clearToken } from "../api/client";
 import Modal from "../components/Modal";
@@ -15,8 +8,8 @@ import { formatToman } from "../utils/format";
 import { resolveImageUrl } from "../utils/image";
 
 interface DeleteResult { deleted: boolean; detail: string; }
-
 interface ImageUploadResult { image_url: string; detail: string; }
+interface ToggleResult { is_open: boolean; detail: string; }
 
 // سقف حجم عکس محصول: ۵ مگابایت
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -36,8 +29,8 @@ export default function AdminPage() {
   const [prodModal, setProdModal] = useState<ProdModal | null>(null);
   const [priceEditId, setPriceEditId] = useState<number | null>(null);
   const [priceValue, setPriceValue] = useState("");
-  // شناسه محصولی که عکسش در حال آپلود است — فقط همان ردیف حالت لودینگ می‌گیرد
   const [uploadingProductId, setUploadingProductId] = useState<number | null>(null);
+  const [isCafeOpen, setIsCafeOpen] = useState(true);
   const flashTimer = useRef<number | null>(null);
 
   const describeError = useCallback((e: unknown): string => {
@@ -67,10 +60,39 @@ export default function AdminPage() {
     } catch (e) { setError(describeError(e)); }
   }, [describeError]);
 
+  // دریافت وضعیت فعلی کافه
+  const checkCafeStatus = useCallback(async () => {
+    try {
+      // اگر منو بارگذاری شد یعنی کافه باز است
+      await api.get<MenuCategory[]>("/api/menu");
+      setIsCafeOpen(true);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 503) {
+        setIsCafeOpen(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     loadAll();
+    checkCafeStatus();
     return () => { if (flashTimer.current !== null) window.clearTimeout(flashTimer.current); };
-  }, [loadAll]);
+  }, [loadAll, checkCafeStatus]);
+
+  // تغییر وضعیت باز/بسته کافه
+  const toggleCafeStatus = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.patch<ToggleResult>("/api/admin/settings/toggle", {});
+      setIsCafeOpen(res.is_open);
+      flash(res.detail);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const run = async (action: () => Promise<void>, successText: string) => {
     if (busy) return;
@@ -184,6 +206,34 @@ export default function AdminPage() {
   return (
     <div className="mx-auto min-h-screen max-w-4xl px-4 py-6" dir="rtl">
       <PanelHeader title="مدیریت منو" />
+
+      {/* ── تگل وضعیت کافه ── */}
+      <div className="mb-6 flex items-center justify-between rounded-2xl bg-white px-5 py-4"
+        style={{ boxShadow: "0 2px 16px rgba(51,38,29,0.08)", border: "1px solid #f0ebe3" }}>
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{isCafeOpen ? "🟢" : "🔴"}</span>
+          <div>
+            <p className="font-bold" style={{ color: "#33261D" }}>وضعیت کافه</p>
+            <p className="text-xs" style={{ color: "rgba(51,38,29,0.5)" }}>
+              {isCafeOpen ? "کافه باز است — پذیرش سفارش فعال" : "کافه بسته است — پذیرش سفارش غیرفعال"}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={toggleCafeStatus}
+          className={`relative h-8 w-14 rounded-full transition-colors duration-300 disabled:opacity-50 ${
+            isCafeOpen ? "bg-pistachio" : "bg-gray-300"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-7 w-7 rounded-full bg-white shadow-md transition-all duration-300 ${
+              isCafeOpen ? "right-0.5" : "right-[calc(100%-1.85rem)]"
+            }`}
+          />
+        </button>
+      </div>
 
       {message && (
         <div className="mb-4 rounded-xl bg-pistachio-light p-3 text-sm font-medium text-pistachio">

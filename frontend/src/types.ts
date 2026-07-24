@@ -50,4 +50,6 @@ export interface Order {
   created_at: string;
   items: OrderItem[];
   qr_image: string | null;
+  payment_method: string | null;
+  queue_number: number | null;
 }
