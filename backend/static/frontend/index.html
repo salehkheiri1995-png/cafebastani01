@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#FAF6EF" />
+    <meta name="description" content="کافه‌بستنی — سفارش آنلاین بستنی، آبمیوه، قهوه و دسر" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍨</text></svg>" />
+    <title>کافه‌بستنی — سفارش آنلاین</title>
+    <!-- فونت فارسی وزیرمتن -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css"
+    />
+    <script type="module" crossorigin src="/assets/index-DqQSs_a8.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DuY61o7g.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // ثبت سرویس‌ورکر برای PWA
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+        });
+      }
+    </script>
+  </body>
+</html>

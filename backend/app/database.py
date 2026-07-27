@@ -1,13 +1,24 @@
 """اتصال به دیتابیس SQLite و مدیریت Session + migration سبک"""
+import os
+from pathlib import Path
+
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# فایل دیتابیس در پوشه backend ساخته می‌شود
-DATABASE_URL = "sqlite:///./cafe.db"
+# فایل دیتابیس — اگر DATABASE_URL در environment variable تعریف شده باشد از آن استفاده می‌شود
+# در غیر این صورت فایل cafe.db در پوشه backend ساخته می‌شود
+_database_url = os.environ.get("DATABASE_URL")
+if not _database_url:
+    _backend_dir = Path(__file__).resolve().parent.parent
+    _db_path = _backend_dir / "cafe.db"
+    _database_url = f"sqlite:///{_db_path}"
 
-# check_same_thread=False چون FastAPI ممکن است درخواست‌ها را در تردهای مختلف اجرا کند
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+connect_args = {}
+if _database_url.startswith("sqlite"):
+    connect_args = {"check_same_thread": False}
+
+engine = create_engine(_database_url, connect_args=connect_args)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
