@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, clearToken } from "../api/client";
 import OrderCard from "../components/OrderCard";
 import PanelHeader from "../components/PanelHeader";
-import QrScanner from "../components/QrScanner";
 import StatusBadge from "../components/StatusBadge";
 import WalkInMenuGrid from "../components/WalkInMenuGrid";
-import type { MenuCategory, Order, OrderItem, OrderStatus, Product } from "../types";
+import type { MenuCategory, Order, OrderItem, OrderStatus } from "../types";
 import { faNum, formatTime, formatToman } from "../utils/format";
+
+// کد-اسپلیت شده تا بسته دوربین/اسکنر QR فقط عندالزوم بارگذاری شود
+const QrScanner = lazy(() => import("../components/QrScanner"));
 
 type Tab = "scan" | "walkin" | "today";
 
@@ -28,6 +30,16 @@ const FILTERS: { id: OrderStatus | "all"; label: string; color: string }[] = [
 
 const EDITABLE_STATUSES: OrderStatus[] = ["pending", "preparing"];
 
+// ───────────────────────── escapeHtml (ایمن‌سازی رسید حرارتی) ─────────────────────────
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // ───────────────────────── تابع پرینت رسید حرارتی ─────────────────────────
 function printReceipt(order: Order) {
   const now = new Date();
@@ -42,7 +54,7 @@ function printReceipt(order: Order) {
     .map(
       (item: OrderItem) => `
       <tr>
-        <td style="padding:3px 0;text-align:right;">${item.product_name}</td>
+        <td style="padding:3px 0;text-align:right;">${escapeHtml(item.product_name)}</td>
         <td style="padding:3px 4px;text-align:center;">${faNum(item.quantity)}</td>
         <td style="padding:3px 0;text-align:left;direction:ltr;">${formatToman(item.unit_price)}</td>
       </tr>
@@ -59,7 +71,7 @@ function printReceipt(order: Order) {
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8"/>
-  <title>رسید سفارش ${order.code}</title>
+  <title>رسید سفارش ${escapeHtml(order.code)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -138,7 +150,7 @@ function printReceipt(order: Order) {
 
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
     <span class="label">کد سفارش:</span>
-    <span class="code">${order.code}</span>
+    <span class="code">${escapeHtml(order.code)}</span>
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
     <span class="label">تاریخ:</span>
@@ -151,7 +163,7 @@ function printReceipt(order: Order) {
   ${order.customer_name ? `
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
     <span class="label">مشتری:</span>
-    <span>${order.customer_name}</span>
+    <span>${escapeHtml(order.customer_name)}</span>
   </div>` : ""}
 
   ${order.queue_number ? `
@@ -223,6 +235,15 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // بستن مودال با کلید Escape (به‌جز هنگام ثبت درخواست)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onClose]);
+
   const allProducts = useMemo(() => menu.flatMap((c) => c.products), [menu]);
 
   const setQty = (productId: number, qty: number) => {
@@ -265,6 +286,9 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="ویرایش سفارش"
         className="w-full max-w-2xl rounded-t-3xl sm:rounded-3xl bg-white overflow-hidden flex flex-col"
         style={{ maxHeight: "92vh", boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
       >
@@ -273,7 +297,7 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
             <h2 className="font-bold text-base" style={{ color: "#33261D" }}>ویرایش سفارش</h2>
             <p className="text-xs mt-0.5 font-mono" style={{ color: "#B8791A" }} dir="ltr">{order.code}</p>
           </div>
-          <button type="button" onClick={onClose}
+          <button type="button" onClick={onClose} aria-label="بستن"
             className="flex h-8 w-8 items-center justify-center rounded-full text-lg"
             style={{ background: "#f7f3ee", color: "#33261D" }}>✕</button>
         </div>
@@ -386,12 +410,11 @@ function EditOrderModal({ order, menu, onClose, onSaved }: EditOrderModalProps) 
 // ───────────────────── کامپوننت دکمه‌های تایید و پرینت ─────────────────────
 interface ConfirmAndPrintProps {
   order: Order;
-  onStatusChange: (orderId: number, status: OrderStatus, paymentMethod?: string) => Promise<void>;
   busy: boolean;
   onPaymentRequest: (order: Order) => void;
 }
 
-function ConfirmAndPrint({ order, onStatusChange, busy, onPaymentRequest }: ConfirmAndPrintProps) {
+function ConfirmAndPrint({ order, busy, onPaymentRequest }: ConfirmAndPrintProps) {
   const [confirming, setConfirming] = useState(false);
 
   const handleConfirmAndPrint = async () => {
@@ -457,12 +480,59 @@ function ConfirmAndPrint({ order, onStatusChange, busy, onPaymentRequest }: Conf
   );
 }
 
+// ───────────────────────── دکمه ویرایش سفارش ─────────────────────────
+// در scope ماژول تا هویت کامپوننت بین رندرها پایدار بماند و ری‌ماونت نشود.
+function EditBtn({ order, onEdit }: { order: Order; onEdit: (order: Order) => void }) {
+  const canEdit = EDITABLE_STATUSES.includes(order.status as OrderStatus);
+  if (!canEdit) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onEdit(order)}
+      className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
+      style={{ background: "#e0e7ff", color: "#3730a3" }}
+      title="ویرایش آیتم‌های سفارش"
+    >
+      <span>✏️</span> ویرایش سفارش
+    </button>
+  );
+}
+
 // ───────────────────────────── صفحه اصلی صندوق ─────────────────────────────
 
 // ── تابع پخش صدای اعلان ──
+// یک AudioContext تنبل و مشترک برای کل برنامه؛ به‌ازای هر اعلان جدید ساخته نمی‌شود
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
+  try {
+    if (!sharedAudioCtx) {
+      const Ctor: typeof AudioContext | undefined =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return null;
+      sharedAudioCtx = new Ctor();
+    }
+    if (sharedAudioCtx.state === "suspended") {
+      void sharedAudioCtx.resume().catch(() => { /* مرورگر اجازه نداد */ });
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null; // AudioContext ممکن است در دسترس نباشد
+  }
+}
+
+function closeAudioContext() {
+  try {
+    if (sharedAudioCtx && sharedAudioCtx.state !== "closed") void sharedAudioCtx.close();
+  } catch { /* خطا در بستن نادیده گرفته می‌شود */ }
+  sharedAudioCtx = null;
+}
+
 function playNotificationSound() {
   try {
-    const ctx = new AudioContext();
+    const ctx = getAudioContext();
+    if (!ctx) return;
     const oscillator = ctx.createOscillator();
     const gain = ctx.createGain();
     oscillator.connect(gain);
@@ -486,6 +556,15 @@ interface PaymentModalProps {
 }
 
 function PaymentModal({ order, onPayment, onClose, busy }: PaymentModalProps) {
+  // بستن مودال با کلید Escape (به‌جز هنگام ثبت پرداخت)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [busy, onClose]);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -493,6 +572,9 @@ function PaymentModal({ order, onPayment, onClose, busy }: PaymentModalProps) {
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="روش پرداخت"
         className="w-full max-w-sm rounded-3xl bg-white p-6 text-center"
         style={{ boxShadow: "0 8px 40px rgba(0,0,0,0.2)" }}
       >
@@ -539,10 +621,14 @@ function PaymentModal({ order, onPayment, onClose, busy }: PaymentModalProps) {
 
 // ── Toast notification ──
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
+  // تایمر بسته‌شدن داخل خود Toast است تا با هر رندر والد دوباره ساخته نشود
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
-    const timer = setTimeout(onClose, 4000);
+    const timer = setTimeout(() => onCloseRef.current(), 4000);
     return () => clearTimeout(timer);
-  }, [onClose]);
+  }, [message]);
 
   return (
     <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 animate-fade-in-up">
@@ -573,6 +659,7 @@ export default function CashierPage() {
   const [walkInResult, setWalkInResult] = useState<Order | null>(null);
 
   const [todayOrders, setTodayOrders] = useState<Order[]>([]);
+  const [todayLoading, setTodayLoading] = useState(true);
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
@@ -656,31 +743,78 @@ export default function CashierPage() {
       setTodayOrders(orders);
       if (!silent) setError(null);
     } catch (e) { if (!silent) setError(describeError(e)); }
+    finally { setTodayLoading(false); }
   }, [filter, describeError]);
 
+  // آخرین نسخهٔ loadToday برای استفاده در افکت WebSocket (بدون وابستگی به filter)
+  const loadTodayRef = useRef(loadToday);
+  useEffect(() => { loadTodayRef.current = loadToday; }, [loadToday]);
+
+  // بارگذاری و پولینگ سفارش‌های امروز — پولینگ هنگام مخفی‌بودن تب متوقف می‌شود
   useEffect(() => {
     if (tab !== "today") return;
     loadToday();
-    const timer = setInterval(() => loadToday(true), 15_000);
-    return () => clearInterval(timer);
+    let timer: number | null = null;
+    const startPolling = () => {
+      if (timer === null) timer = window.setInterval(() => loadToday(true), 15_000);
+    };
+    const stopPolling = () => {
+      if (timer !== null) { window.clearInterval(timer); timer = null; }
+    };
+    const onVisibility = () => {
+      if (document.hidden) stopPolling();
+      else { loadToday(true); startPolling(); }
+    };
+    if (!document.hidden) startPolling();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [tab, loadToday]);
 
   // ── اتصال WebSocket برای اعلان سفارش جدید ──
+  // این افکت فقط یک‌بار در mount اجرا می‌شود (هیچ وابستگی به filter ندارد) و
+  // فقط هنگام قطع‌شدن اتصال دوباره وصل می‌شود.
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws/orders`;
 
+    let shouldReconnect = true;
+    let attempt = 0;
+    let reconnectTimer: number | null = null;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    // بک‌آف نمایی: 3s → 6s → 12s → 24s (سقف 30s)
+    const scheduleReconnect = () => {
+      if (!shouldReconnect) return;
+      clearReconnectTimer();
+      const delay = Math.min(3000 * 2 ** Math.min(attempt, 4), 30_000);
+      attempt += 1;
+      reconnectTimer = window.setTimeout(connect, delay);
+    };
+
     const connect = () => {
+      if (!shouldReconnect) return;
+      clearReconnectTimer();
       try {
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
+
+        ws.onopen = () => { attempt = 0; };
 
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
             if (data.type === "new_order") {
-              // رفرش لیست سفارش‌های امروز
-              loadToday(true);
+              // رفرش لیست سفارش‌های امروز (با آخرین فیلتر)
+              loadTodayRef.current(true);
               // پخش صدای اعلان
               playNotificationSound();
               // نمایش toast
@@ -690,24 +824,36 @@ export default function CashierPage() {
         };
 
         ws.onclose = () => {
-          // اتصال مجدد بعد از ۳ ثانیه
-          setTimeout(connect, 3000);
+          if (wsRef.current === ws) wsRef.current = null;
+          // اتصال مجدد با بک‌آف (فقط اگر هنوز در صفحه هستیم)
+          scheduleReconnect();
         };
 
         ws.onerror = () => {
           ws.close();
         };
       } catch {
-        setTimeout(connect, 3000);
+        scheduleReconnect();
       }
     };
 
     connect();
 
     return () => {
-      wsRef.current?.close();
+      shouldReconnect = false;
+      clearReconnectTimer();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws) {
+        // جدا کردن هندلرها تا onclose برنامهٔ ری‌کانکت را اجرا نکند
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        ws.close();
+      }
     };
-  }, [loadToday]);
+  }, []);
 
   const todayTotal = useMemo(() =>
     todayOrders.filter((o) => o.status === "completed").reduce((sum, o) => sum + o.total_amount, 0),
@@ -721,21 +867,16 @@ export default function CashierPage() {
     setTodayOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
   };
 
-  const EditBtn = ({ order }: { order: Order }) => {
-    const canEdit = EDITABLE_STATUSES.includes(order.status as OrderStatus);
-    if (!canEdit) return null;
-    return (
-      <button
-        type="button"
-        onClick={() => { if (menu) setEditingOrder(order); }}
-        className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all"
-        style={{ background: "#e0e7ff", color: "#3730a3" }}
-        title="ویرایش آیتم‌های سفارش"
-      >
-        <span>✏️</span> ویرایش سفارش
-      </button>
-    );
-  };
+  const handleEditRequest = useCallback((order: Order) => {
+    if (menu) setEditingOrder(order);
+  }, [menu]);
+
+  const closeEditModal = useCallback(() => setEditingOrder(null), []);
+  const closePaymentModal = useCallback(() => setPaymentOrder(null), []);
+  const closeToast = useCallback(() => setToast(null), []);
+
+  // آزادسازی AudioContext مشترک هنگام خروج از صفحه
+  useEffect(() => () => { closeAudioContext(); }, []);
 
   return (
     <div className="mx-auto min-h-screen max-w-4xl px-4 py-6" dir="rtl">
@@ -770,7 +911,15 @@ export default function CashierPage() {
               <span className="flex h-8 w-8 items-center justify-center rounded-xl text-lg" style={{ background: "#F7E6C4" }}>📷</span>
               اسکن QR مشتری
             </h2>
-            <QrScanner onScan={fetchByCode} />
+            <Suspense
+              fallback={
+                <div className="py-6 text-center text-sm" style={{ color: "rgba(51,38,29,0.4)" }}>
+                  در حال بارگذاری دوربین…
+                </div>
+              }
+            >
+              <QrScanner onScan={fetchByCode} />
+            </Suspense>
             <form onSubmit={submitManualCode} className="mt-4 flex gap-2">
               <input type="text" value={manualCode} onChange={(e) => setManualCode(e.target.value)}
                 placeholder="یا کد سفارش را دستی وارد کن" dir="ltr"
@@ -785,10 +934,10 @@ export default function CashierPage() {
             {scannedOrder ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-end">
-                  <EditBtn order={scannedOrder} />
+                  <EditBtn order={scannedOrder} onEdit={handleEditRequest} />
                 </div>
                 <OrderCard order={scannedOrder} onStatusChange={changeStatus} onPaymentRequest={setPaymentOrder} busy={busy} />
-                <ConfirmAndPrint order={scannedOrder} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
+                <ConfirmAndPrint order={scannedOrder} busy={busy} onPaymentRequest={setPaymentOrder} />
               </div>
             ) : (
               <div className="flex h-full min-h-52 items-center justify-center rounded-2xl text-center text-sm"
@@ -855,7 +1004,7 @@ export default function CashierPage() {
                     className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن رسید</button>
                 </div>
                 <OrderCard order={walkInResult} onStatusChange={changeStatus} onPaymentRequest={setPaymentOrder} busy={busy} />
-                <ConfirmAndPrint order={walkInResult} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
+                <ConfirmAndPrint order={walkInResult} busy={busy} onPaymentRequest={setPaymentOrder} />
               </div>
             )}
           </div>
@@ -891,17 +1040,23 @@ export default function CashierPage() {
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-bold" style={{ color: "#33261D" }}>جزئیات سفارش انتخاب‌شده</span>
                 <div className="flex items-center gap-2">
-                  <EditBtn order={selectedOrder} />
+                  <EditBtn order={selectedOrder} onEdit={handleEditRequest} />
                   <button type="button" onClick={() => setSelectedOrder(null)}
                     className="text-xs underline" style={{ color: "rgba(51,38,29,0.4)" }}>بستن</button>
                 </div>
               </div>
               <OrderCard order={selectedOrder} onStatusChange={changeStatus} onPaymentRequest={setPaymentOrder} busy={busy} />
-              <ConfirmAndPrint order={selectedOrder} onStatusChange={changeStatus} busy={busy} onPaymentRequest={setPaymentOrder} />
+              <ConfirmAndPrint order={selectedOrder} busy={busy} onPaymentRequest={setPaymentOrder} />
             </div>
           )}
 
-          {todayOrders.length === 0
+          {todayLoading ? (
+            <div className="space-y-2" role="status" aria-label="در حال بارگذاری سفارش‌های امروز">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-14 animate-pulse rounded-2xl bg-sand" />
+              ))}
+            </div>
+          ) : todayOrders.length === 0
             ? <div className="py-16 text-center">
                 <span className="text-5xl">📋</span>
                 <p className="mt-3 text-sm" style={{ color: "rgba(51,38,29,0.4)" }}>امروز هنوز سفارشی با این وضعیت نیست</p>
@@ -914,14 +1069,14 @@ export default function CashierPage() {
                     <div className="flex items-center gap-3">
                       <span className="font-mono text-sm font-bold" style={{ color: "#B8791A" }} dir="ltr">{order.code}</span>
                       {order.queue_number && (
-                        <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white"
+                        <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full px-1.5 text-2xs font-bold text-white"
                           style={{ background: "#E9A13B" }}>
                           #{faNum(order.queue_number)}
                         </span>
                       )}
                       <span className="text-xs" style={{ color: "rgba(51,38,29,0.45)" }}>{formatTime(order.created_at)}</span>
                       {order.customer_name && <span className="text-xs" style={{ color: "rgba(51,38,29,0.55)" }}>{order.customer_name}</span>}
-                      <span className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      <span className="rounded-full px-2 py-0.5 text-2xs font-medium"
                         style={order.source === "online"
                           ? { background: "#e0e7ff", color: "#3730a3" }
                           : { background: "#F7E6C4", color: "#B8791A" }}>
@@ -944,7 +1099,7 @@ export default function CashierPage() {
         <EditOrderModal
           order={editingOrder}
           menu={menu}
-          onClose={() => setEditingOrder(null)}
+          onClose={closeEditModal}
           onSaved={handleEditSaved}
         />
       )}
@@ -954,7 +1109,7 @@ export default function CashierPage() {
         <PaymentModal
           order={paymentOrder}
           busy={busy}
-          onClose={() => setPaymentOrder(null)}
+          onClose={closePaymentModal}
           onPayment={async (method) => {
             await changeStatus(paymentOrder.id, "completed", method);
             setPaymentOrder(null);
@@ -963,7 +1118,7 @@ export default function CashierPage() {
       )}
 
       {/* Toast notification */}
-      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
+      {toast && <Toast message={toast} onClose={closeToast} />}
     </div>
   );
 }

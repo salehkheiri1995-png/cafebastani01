@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, clearToken } from "../api/client";
 import PanelHeader from "../components/PanelHeader";
@@ -37,9 +37,15 @@ const STATUS_COLORS: Record<string, string> = {
   pending: "bg-saffron-light text-saffron-dark",
   preparing: "bg-blue-100 text-blue-800",
   ready: "bg-pistachio-light text-pistachio",
-  completed: "bg-gray-200 text-gray-600",
+  completed: "bg-cream-200 text-ink-soft",
   cancelled: "bg-berry-light text-berry",
 };
+
+// تاریخ محلی امروز به‌صورت YYYY-MM-DD (مقایسه با UTC ساعت را عقب/جلو می‌اندازد)
+function localDateString(d: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -49,6 +55,7 @@ export default function AdminDashboard() {
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasLoadedRef = useRef(false);
 
   const describeError = useCallback(
     (e: unknown): string => {
@@ -62,9 +69,9 @@ export default function AdminDashboard() {
     [navigate],
   );
 
-  const loadDashboard = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  // silent: به‌روزرسانی خاموش پس‌زمینه — بدون ریست کردن حالت بارگذاری کل صفحه
+  const loadDashboard = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [todayData, weekData, topData, recentData] = await Promise.all([
         api.get<TodayStats>("/api/reports/dashboard/today"),
@@ -76,17 +83,27 @@ export default function AdminDashboard() {
       setWeekRevenue(weekData);
       setTopProducts(topData);
       setRecentOrders(recentData);
+      setError(null);
+      hasLoadedRef.current = true;
     } catch (e) {
       setError(describeError(e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [describeError]);
 
   useEffect(() => {
     loadDashboard();
-    const timer = setInterval(loadDashboard, 30_000);
-    return () => clearInterval(timer);
+    // هر ۳۰ ثانیه فقط وقتی تب فعال است به‌روزرسانی می‌شود
+    const refreshIfVisible = () => {
+      if (!document.hidden) loadDashboard(hasLoadedRef.current);
+    };
+    const timer = window.setInterval(refreshIfVisible, 30_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
   }, [loadDashboard]);
 
   if (loading && !today) {
@@ -156,13 +173,13 @@ export default function AdminDashboard() {
           }}
         >
           <h3 className="mb-4 font-bold" style={{ color: "#33261D" }}>
-            📈 درآمد ۷ روز اخیر
+            <span aria-hidden="true">📈 </span>درآمد ۷ روز اخیر
           </h3>
-          <div className="flex items-end gap-2" style={{ height: 160 }}>
+          <div className="flex items-end gap-2" style={{ height: 160 }} role="img" aria-label="نمودار درآمد هفت روز گذشته">
             {weekRevenue.map((day) => (
               <div key={day.date} className="flex flex-1 flex-col items-center gap-1">
                 <span
-                  className="text-[10px] font-bold"
+                  className="num text-2xs font-bold"
                   style={{ color: "#B8791A" }}
                 >
                   {day.revenue > 0 ? faNum(Math.round(day.revenue / 1000)) + "k" : "0"}
@@ -172,13 +189,13 @@ export default function AdminDashboard() {
                   style={{
                     height: `${Math.max((day.revenue / maxRevenue) * 120, 4)}px`,
                     background:
-                      day.date === new Date().toISOString().slice(0, 10)
+                      day.date === localDateString()
                         ? "linear-gradient(180deg, #E9A13B, #B8791A)"
                         : "linear-gradient(180deg, #f7e6c4, #e5d5b8)",
                     minHeight: 4,
                   }}
                 />
-                <span className="text-[10px]" style={{ color: "rgba(51,38,29,0.4)" }}>
+                <span className="num text-2xs" style={{ color: "rgba(51,38,29,0.4)" }}>
                   {day.label}
                 </span>
               </div>
@@ -195,7 +212,7 @@ export default function AdminDashboard() {
           }}
         >
           <h3 className="mb-4 font-bold" style={{ color: "#33261D" }}>
-            🏆 ۵ محصول پرفروش امروز
+            <span aria-hidden="true">🏆 </span>۵ محصول پرفروش امروز
           </h3>
           {topProducts.length === 0 ? (
             <p className="py-8 text-center text-sm" style={{ color: "rgba(51,38,29,0.35)" }}>
@@ -227,11 +244,11 @@ export default function AdminDashboard() {
                         <span className="text-sm font-bold truncate" style={{ color: "#33261D" }}>
                           {p.name}
                         </span>
-                        <span className="text-xs font-bold mr-2" style={{ color: "#B8791A" }}>
+                        <span className="num text-xs font-bold mr-2" style={{ color: "#B8791A" }}>
                           {faNum(p.quantity)} عدد
                         </span>
                       </div>
-                      <div className="mt-1 h-2 w-full rounded-full bg-gray-100">
+                      <div className="mt-1 h-2 w-full rounded-full bg-cream-200">
                         <div
                           className="h-full rounded-full transition-all duration-500"
                           style={{
@@ -259,7 +276,7 @@ export default function AdminDashboard() {
       >
         <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: "#f0ebe3" }}>
           <h3 className="font-bold" style={{ color: "#33261D" }}>
-            🕐 سفارش‌های اخیر
+            <span aria-hidden="true">🕐 </span>سفارش‌های اخیر
           </h3>
         </div>
         <div className="overflow-x-auto">
@@ -269,8 +286,8 @@ export default function AdminDashboard() {
                 <th className="px-4 py-3 text-right text-xs font-bold" style={{ color: "rgba(51,38,29,0.5)" }}>کد</th>
                 <th className="px-4 py-3 text-right text-xs font-bold" style={{ color: "rgba(51,38,29,0.5)" }}>مشتری</th>
                 <th className="px-4 py-3 text-right text-xs font-bold" style={{ color: "rgba(51,38,29,0.5)" }}>وضعیت</th>
-                <th className="px-4 py-3 text-right text-xs font-bold" style={{ color: "rgba(51,38,29,0.5)" }}>مبلغ</th>
-                <th className="px-4 py-3 text-right text-xs font-bold" style={{ color: "rgba(51,38,29,0.5)" }}>ساعت</th>
+                <th className="num px-4 py-3 text-right text-xs font-bold" style={{ color: "rgba(51,38,29,0.5)" }}>مبلغ</th>
+                <th className="num px-4 py-3 text-right text-xs font-bold" style={{ color: "rgba(51,38,29,0.5)" }}>ساعت</th>
               </tr>
             </thead>
             <tbody>
@@ -283,7 +300,7 @@ export default function AdminDashboard() {
                   <td className="px-4 py-3 font-mono font-bold" style={{ color: "#B8791A" }}>
                     {o.code}
                     {o.queue_number && (
-                      <span className="inline-flex items-center justify-center rounded-full px-2 py-0.5 ms-1 text-[10px] font-bold text-white"
+                      <span className="num inline-flex items-center justify-center rounded-full px-2 py-0.5 ms-1 text-2xs font-bold text-white"
                         style={{ background: "#E9A13B", minWidth: 24 }}>
                         #{faNum(o.queue_number)}
                       </span>
@@ -294,15 +311,15 @@ export default function AdminDashboard() {
                   </td>
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_COLORS[o.status] ?? "bg-gray-100 text-gray-600"}`}
+                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_COLORS[o.status] ?? "bg-cream-200 text-ink-soft"}`}
                     >
                       {STATUS_LABELS[o.status] ?? o.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-bold" style={{ color: "#33261D" }}>
+                  <td className="num px-4 py-3 font-bold" style={{ color: "#33261D" }}>
                     {formatToman(o.total_amount)}
                   </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: "rgba(51,38,29,0.5)" }}>
+                  <td className="num px-4 py-3 text-xs" style={{ color: "rgba(51,38,29,0.5)" }}>
                     {new Date(o.created_at).toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" })}
                   </td>
                 </tr>
@@ -341,8 +358,8 @@ function StatCard({
         border: "1px solid #f0ebe3",
       }}
     >
-      <div className="mb-2 text-2xl">{icon}</div>
-      <div className="text-xl font-extrabold" style={{ color }}>
+      <div className="mb-2 text-2xl" aria-hidden="true">{icon}</div>
+      <div className="num text-xl font-extrabold" style={{ color }}>
         {value}
       </div>
       <div className="mt-1 text-xs font-medium" style={{ color: "rgba(51,38,29,0.5)" }}>

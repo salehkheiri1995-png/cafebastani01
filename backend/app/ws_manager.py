@@ -1,5 +1,6 @@
 """مدیریت اتصالات WebSocket برای اعلان سفارش جدید"""
-import json
+import asyncio
+
 from fastapi import WebSocket
 
 
@@ -8,9 +9,12 @@ class ConnectionManager:
 
     def __init__(self) -> None:
         self._connections: list[WebSocket] = []
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def connect(self, websocket: WebSocket) -> None:
         """اتصال جدید را بپذیر و در لیست نگه‌دار"""
+        # ذخیره event loop اصلی تا endpointهای همزمان (threadpool) بتوانند broadcast کنند
+        self._loop = asyncio.get_running_loop()
         await websocket.accept()
         self._connections.append(websocket)
 
@@ -29,6 +33,13 @@ class ConnectionManager:
                 dead.append(connection)
         for d in dead:
             self.disconnect(d)
+
+    def broadcast_threadsafe(self, message: dict) -> None:
+        """ارسال پیام از یک thread دیگر (مثلاً threadpool FastAPI) به event loop اصلی.
+        اگر کلاینتی متصل نباشد کاری انجام نمی‌شود."""
+        if not self._connections or self._loop is None or self._loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(self.broadcast(message), self._loop)
 
 
 # نمونه سراسری — همه اتصالات WebSocket از این استفاده می‌کنند

@@ -5,6 +5,21 @@ interface Props {
   onScan: (text: string) => void;
 }
 
+// html5-qrcode متد stop()/clear() را گاهی به‌صورت همزمان throw می‌کند (نه reject)
+// بنابراین هر فراخوانی باید داخل try/catch باشد تا از cleanup به error boundary نرسد
+async function safeStop(scanner: Html5Qrcode) {
+  try {
+    await scanner.stop();
+  } catch {
+    /* اسکنر از قبل متوقف بود */
+  }
+  try {
+    scanner.clear();
+  } catch {
+    /* المان از قبل پاک شده */
+  }
+}
+
 // اسکنر QR با وب‌کم لپ‌تاپ (کتابخانه html5-qrcode)
 // نکته: مرورگر فقط روی localhost یا HTTPS اجازه دوربین می‌دهد
 export default function QrScanner({ onScan }: Props) {
@@ -36,7 +51,7 @@ export default function QrScanner({ onScan }: Props) {
       )
       .then(() => {
         // اگر کامپوننت قبل از آماده شدن دوربین unmount شد، متوقفش کن
-        if (!active) scanner.stop().catch(() => undefined);
+        if (!active) void safeStop(scanner);
       })
       .catch(() => {
         setError(
@@ -46,10 +61,7 @@ export default function QrScanner({ onScan }: Props) {
 
     return () => {
       active = false;
-      scanner
-        .stop()
-        .then(() => scanner.clear())
-        .catch(() => undefined);
+      void safeStop(scanner);
     };
   }, []);
 

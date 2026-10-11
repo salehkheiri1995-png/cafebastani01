@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [priceValue, setPriceValue] = useState("");
   const [uploadingProductId, setUploadingProductId] = useState<number | null>(null);
   const [isCafeOpen, setIsCafeOpen] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
   const flashTimer = useRef<number | null>(null);
 
   const describeError = useCallback((e: unknown): string => {
@@ -58,6 +59,7 @@ export default function AdminPage() {
       setCategories(cats);
       setProducts(prods);
     } catch (e) { setError(describeError(e)); }
+    finally { setInitialLoading(false); }
   }, [describeError]);
 
   // دریافت وضعیت فعلی کافه
@@ -124,13 +126,7 @@ export default function AdminPage() {
 
   const deleteProduct = (product: Product) => {
     if (!window.confirm(`محصول «${product.name}» حذف شود؟`)) return;
-    if (busy) return;
-    setBusy(true);
-    setError(null);
-    api.delete<DeleteResult>(`/api/admin/products/${product.id}`)
-      .then(async (res) => { await loadAll(); flash(res.detail); })
-      .catch((e) => setError(describeError(e)))
-      .finally(() => setBusy(false));
+    run(async () => { await api.delete<DeleteResult>(`/api/admin/products/${product.id}`); }, "محصول حذف شد");
   };
 
   const startPriceEdit = (product: Product) => {
@@ -209,7 +205,7 @@ export default function AdminPage() {
       <div className="mb-6 flex items-center justify-between rounded-2xl bg-white px-5 py-4"
         style={{ boxShadow: "0 2px 16px rgba(51,38,29,0.08)", border: "1px solid #f0ebe3" }}>
         <div className="flex items-center gap-3">
-          <span className="text-2xl">{isCafeOpen ? "🟢" : "🔴"}</span>
+          <span className="text-2xl" aria-hidden="true">{isCafeOpen ? "🟢" : "🔴"}</span>
           <div>
             <p className="font-bold" style={{ color: "#33261D" }}>وضعیت کافه</p>
             <p className="text-xs" style={{ color: "rgba(51,38,29,0.5)" }}>
@@ -219,10 +215,13 @@ export default function AdminPage() {
         </div>
         <button
           type="button"
+          role="switch"
+          aria-checked={isCafeOpen}
+          aria-label="پذیرش سفارش کافه"
           disabled={busy}
           onClick={toggleCafeStatus}
           className={`relative h-8 w-14 rounded-full transition-colors duration-300 disabled:opacity-50 ${
-            isCafeOpen ? "bg-pistachio" : "bg-gray-300"
+            isCafeOpen ? "bg-pistachio" : "bg-cream-400"
           }`}
         >
           <span
@@ -235,7 +234,7 @@ export default function AdminPage() {
 
       {message && (
         <div className="mb-4 rounded-xl bg-pistachio-light p-3 text-sm font-medium text-pistachio">
-          ✓ {message}
+          <span aria-hidden="true">✓ </span>{message}
         </div>
       )}
       {error && (
@@ -251,19 +250,19 @@ export default function AdminPage() {
             + دسته جدید
           </button>
         </div>
-        <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card">
           {categories.map((cat) => (
             <div key={cat.id}
-              className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-4 py-3 last:border-b-0">
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-cream-200 px-4 py-3 last:border-b-0">
               <div className="flex items-center gap-3">
-                <span className={`font-bold ${cat.is_active ? "" : "text-gray-400 line-through"}`}>{cat.name}</span>
+                <span className={`font-bold ${cat.is_active ? "" : "text-ink-muted line-through"}`}>{cat.name}</span>
                 {!cat.is_active && (
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">مخفی از منو</span>
+                  <span className="rounded-full bg-cream-200 px-2 py-0.5 text-xs text-ink-muted">مخفی از منو</span>
                 )}
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <button type="button" disabled={busy} onClick={() => toggleCategory(cat)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-bold ${cat.is_active ? "bg-gray-100 text-gray-600" : "bg-pistachio-light text-pistachio"}`}>
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold ${cat.is_active ? "bg-cream-200 text-ink-soft" : "bg-pistachio-light text-pistachio"}`}>
                   {cat.is_active ? "مخفی کن" : "فعال کن"}
                 </button>
                 <button type="button" disabled={busy} onClick={() => setCatModal({ mode: "edit", category: cat })}
@@ -273,8 +272,13 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
-          {categories.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-400">هنوز دسته‌ای ساخته نشده</p>
+          {initialLoading ? (
+            <div className="space-y-2 p-4" aria-hidden="true">
+              <div className="h-10 animate-pulse rounded-xl bg-cream-200" />
+              <div className="h-10 animate-pulse rounded-xl bg-cream-200" />
+            </div>
+          ) : categories.length === 0 && (
+            <p className="p-6 text-center text-sm text-ink-muted">هنوز دسته‌ای ساخته نشده</p>
           )}
         </div>
       </section>
@@ -286,7 +290,7 @@ export default function AdminPage() {
           <div className="flex items-center gap-2">
             <select value={filterCat === "all" ? "all" : String(filterCat)}
               onChange={(e) => setFilterCat(e.target.value === "all" ? "all" : Number(e.target.value))}
-              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm outline-none">
+              className="rounded-xl border border-cream-300 bg-white px-3 py-2 text-sm outline-none">
               <option value="all">همه دسته‌ها</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -297,40 +301,44 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+        <div className="overflow-hidden rounded-2xl bg-white shadow-card">
           {visibleProducts.map((product) => (
             <div key={product.id}
-              className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 px-4 py-4 last:border-b-0">
+              className="flex flex-wrap items-start justify-between gap-3 border-b border-cream-200 px-4 py-4 last:border-b-0">
 
               {/* ── image cell ── */}
               <div className="flex items-start gap-3">
-                <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-cream">
+                <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-cream-200 bg-cream">
                   {product.image_url ? (
                     <img src={resolveImageUrl(product.image_url) ?? undefined} alt={product.name}
                       className="h-full w-full object-cover" />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-2xl text-gray-300">🖼️</div>
+                    <div className="flex h-full w-full items-center justify-center text-2xl text-ink-faint" aria-hidden="true">🖼️</div>
                   )}
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`font-bold ${product.is_available ? "" : "text-gray-400 line-through"}`}>
+                    <span className={`font-bold ${product.is_available ? "" : "text-ink-muted line-through"}`}>
                       {product.name}
                     </span>
-                    <span className="rounded-full bg-cream px-2 py-0.5 text-xs text-gray-500">
+                    <span className="rounded-full bg-cream px-2 py-0.5 text-xs text-ink-muted">
                       {catName(product.category_id)}
                     </span>
                   </div>
                   {product.description && (
-                    <p className="mt-0.5 text-xs text-gray-400">{product.description}</p>
+                    <p className="mt-0.5 text-xs text-ink-muted">{product.description}</p>
                   )}
                   {/* image upload / remove buttons */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    <label className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold ${busy ? "cursor-not-allowed opacity-50 bg-gray-100 text-gray-500" : "bg-saffron-light text-saffron-dark hover:bg-saffron/20"}`}>
+                    <label className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-bold ${busy ? "cursor-not-allowed opacity-50 bg-cream-200 text-ink-muted" : "bg-saffron-light text-saffron-dark hover:bg-saffron/20"}`}>
+                      <span aria-hidden="true">
+                        {uploadingProductId === product.id ? "⏳ " : "📷 "}
+                      </span>
                       {uploadingProductId === product.id
-                        ? "⏳ در حال آپلود..."
-                        : `📷 ${product.image_url ? "تغییر عکس" : "آپلود عکس"}`}
-                      <input type="file" accept="image/*" className="hidden"
+                        ? "در حال آپلود..."
+                        : (product.image_url ? "تغییر عکس" : "آپلود عکس")}
+                      {/* sr-only به‌جای hidden تا با کیبورد هم قابل فعال‌سازی باشد */}
+                      <input type="file" accept="image/*" className="sr-only"
                         disabled={busy}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => {
                           uploadImage(product, e.target.files?.[0]);
@@ -341,7 +349,7 @@ export default function AdminPage() {
                       <button type="button" disabled={busy}
                         onClick={() => removeImage(product)}
                         className="rounded-lg bg-berry-light px-2.5 py-1 text-xs font-bold text-berry">
-                        🗑 حذف عکس
+                        <span aria-hidden="true">🗑 </span>حذف عکس
                       </button>
                     )}
                   </div>
@@ -362,12 +370,12 @@ export default function AdminPage() {
                 ) : (
                   <button type="button" disabled={busy} onClick={() => startPriceEdit(product)}
                     title="کلیک برای ویرایش قیمت"
-                    className="rounded-lg px-2 py-1.5 text-sm font-bold text-saffron-dark underline decoration-dotted underline-offset-4 hover:bg-saffron-light">
+                    className="num rounded-lg px-2 py-1.5 text-sm font-bold text-saffron-dark underline decoration-dotted underline-offset-4 hover:bg-saffron-light">
                     {formatToman(product.price)}
                   </button>
                 )}
                 <button type="button" disabled={busy} onClick={() => toggleProduct(product)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-bold ${product.is_available ? "bg-gray-100 text-gray-600" : "bg-pistachio-light text-pistachio"}`}>
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold ${product.is_available ? "bg-cream-200 text-ink-soft" : "bg-pistachio-light text-pistachio"}`}>
                   {product.is_available ? "ناموجود کن" : "موجود کن"}
                 </button>
                 <button type="button" disabled={busy} onClick={() => setProdModal({ mode: "edit", product })}
@@ -377,8 +385,14 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
-          {visibleProducts.length === 0 && (
-            <p className="p-6 text-center text-sm text-gray-400">محصولی در این دسته نیست</p>
+          {initialLoading ? (
+            <div className="space-y-2 p-4" aria-hidden="true">
+              <div className="h-20 animate-pulse rounded-xl bg-cream-200" />
+              <div className="h-20 animate-pulse rounded-xl bg-cream-200" />
+              <div className="h-20 animate-pulse rounded-xl bg-cream-200" />
+            </div>
+          ) : visibleProducts.length === 0 && (
+            <p className="p-6 text-center text-sm text-ink-muted">محصولی در این دسته نیست</p>
           )}
         </div>
       </section>
@@ -423,14 +437,14 @@ function CategoryForm({ initial, busy, onClose, onSubmit }: {
     <Modal title={initial ? "ویرایش دسته" : "دسته جدید"} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <label className="block text-sm">
-          <span className="mb-1 block text-gray-500">نام دسته</span>
+          <span className="mb-1 block text-ink-muted">نام دسته</span>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} required maxLength={100}
-            className="w-full rounded-xl border border-gray-200 bg-cream p-3 outline-none focus:border-saffron" />
+            className="w-full rounded-xl border border-cream-300 bg-cream p-3 outline-none focus:border-saffron" />
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block text-gray-500">ترتیب نمایش (عدد کوچک‌تر = بالاتر)</span>
+          <span className="mb-1 block text-ink-muted">ترتیب نمایش (عدد کوچک‌تر = بالاتر)</span>
           <input type="number" value={order} onChange={(e) => setOrder(e.target.value)}
-            className="w-full rounded-xl border border-gray-200 bg-cream p-3 outline-none focus:border-saffron" />
+            className="w-full rounded-xl border border-cream-300 bg-cream p-3 outline-none focus:border-saffron" />
         </label>
         <button type="submit" disabled={busy || !name.trim()}
           className="w-full rounded-xl bg-saffron py-3 font-bold text-white hover:bg-saffron-dark disabled:opacity-50">
@@ -472,32 +486,32 @@ function ProductForm({ initial, categories, busy, onClose, onSubmit }: {
     <Modal title={initial ? "ویرایش محصول" : "محصول جدید"} onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <label className="block text-sm">
-          <span className="mb-1 block text-gray-500">نام محصول</span>
+          <span className="mb-1 block text-ink-muted">نام محصول</span>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} required maxLength={150}
-            className="w-full rounded-xl border border-gray-200 bg-cream p-3 outline-none focus:border-saffron" />
+            className="w-full rounded-xl border border-cream-300 bg-cream p-3 outline-none focus:border-saffron" />
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block text-gray-500">دسته</span>
+          <span className="mb-1 block text-ink-muted">دسته</span>
           <select value={String(categoryId)} onChange={(e) => setCategoryId(Number(e.target.value))}
-            className="w-full rounded-xl border border-gray-200 bg-cream p-3 outline-none focus:border-saffron">
+            className="w-full rounded-xl border border-cream-300 bg-cream p-3 outline-none focus:border-saffron">
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block text-gray-500">قیمت (تومان)</span>
+          <span className="mb-1 block text-ink-muted">قیمت (تومان)</span>
           <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} required min={1}
-            className="w-full rounded-xl border border-gray-200 bg-cream p-3 outline-none focus:border-saffron" />
+            className="w-full rounded-xl border border-cream-300 bg-cream p-3 outline-none focus:border-saffron" />
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block text-gray-500">توضیح کوتاه (اختیاری)</span>
+          <span className="mb-1 block text-ink-muted">توضیح کوتاه (اختیاری)</span>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} maxLength={500}
-            className="w-full rounded-xl border border-gray-200 bg-cream p-3 outline-none focus:border-saffron" />
+            className="w-full rounded-xl border border-cream-300 bg-cream p-3 outline-none focus:border-saffron" />
         </label>
         <div className="flex gap-3">
           <label className="block flex-1 text-sm">
-            <span className="mb-1 block text-gray-500">ترتیب نمایش</span>
+            <span className="mb-1 block text-ink-muted">ترتیب نمایش</span>
             <input type="number" value={order} onChange={(e) => setOrder(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-cream p-3 outline-none focus:border-saffron" />
+              className="w-full rounded-xl border border-cream-300 bg-cream p-3 outline-none focus:border-saffron" />
           </label>
           <label className="flex flex-1 items-end gap-2 pb-3 text-sm">
             <input type="checkbox" checked={available} onChange={(e) => setAvailable(e.target.checked)}

@@ -16,6 +16,7 @@ from ..schemas import (
     ProductUpdate,
 )
 from ..storage import delete_product_image_file, save_product_image
+from .menu import invalidate_menu_cache
 
 # سقف حجم عکس محصول: ۵ مگابایت
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -50,6 +51,7 @@ def create_category(body: CategoryCreate, db: Session = Depends(get_db)):
     db.add(category)
     db.commit()
     db.refresh(category)
+    invalidate_menu_cache()
     return category
 
 
@@ -78,6 +80,7 @@ def update_category(
         setattr(category, field, value)
     db.commit()
     db.refresh(category)
+    invalidate_menu_cache()
     return category
 
 
@@ -93,6 +96,7 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
         )
     db.delete(category)
     db.commit()
+    invalidate_menu_cache()
     return DeleteResult(deleted=True, detail="دسته حذف شد")
 
 
@@ -123,6 +127,7 @@ def create_product(body: ProductCreate, db: Session = Depends(get_db)):
     db.add(product)
     db.commit()
     db.refresh(product)
+    invalidate_menu_cache()
     return product
 
 
@@ -140,6 +145,7 @@ def update_product(product_id: int, body: ProductUpdate, db: Session = Depends(g
         setattr(product, field, value)
     db.commit()
     db.refresh(product)
+    invalidate_menu_cache()
     return product
 
 
@@ -159,6 +165,7 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     if used_in_orders:
         product.is_available = False
         db.commit()
+        invalidate_menu_cache()
         return DeleteResult(
             deleted=False,
             detail="این محصول در سفارش‌های قبلی استفاده شده؛ به‌جای حذف، ناموجود شد",
@@ -168,14 +175,17 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     delete_product_image_file(product.image_url)
     db.delete(product)
     db.commit()
+    invalidate_menu_cache()
     return DeleteResult(deleted=True, detail="محصول حذف شد")
 
 
 # ---------------- عکس محصول ----------------
 
 
+# عمداً def است نه async def: ریسایز با PIL همزمانی است و FastAPI آن را
+# در threadpool اجرا می‌کند تا event loop بلاک نشود.
 @router.post("/products/{product_id}/image", response_model=ImageUploadResult)
-async def upload_product_image(
+def upload_product_image(
     product_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -190,7 +200,8 @@ async def upload_product_image(
     if not (file.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="فقط فایل تصویری مجاز است")
 
-    data: bytes = await file.read()
+    # خواندن همزمان فایل آپلودشده (بدون await، چون endpoint همزمانی است)
+    data: bytes = file.file.read()
     if len(data) == 0:
         raise HTTPException(status_code=400, detail="فایل انتخاب‌شده خالی است")
     if len(data) > MAX_IMAGE_BYTES:
@@ -203,6 +214,7 @@ async def upload_product_image(
     product.image_url = save_product_image(data, file.filename, file.content_type)
     db.commit()
     db.refresh(product)
+    invalidate_menu_cache()
     return ImageUploadResult(image_url=product.image_url, detail="عکس ذخیره شد")
 
 
@@ -218,6 +230,7 @@ def remove_product_image(
     delete_product_image_file(product.image_url)
     product.image_url = None
     db.commit()
+    invalidate_menu_cache()
     return DeleteResult(deleted=True, detail="عکس حذف شد")
 
 

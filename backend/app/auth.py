@@ -1,13 +1,12 @@
 """لاگین ساده با رمز عبور و صدور توکن JWT برای پنل‌ها"""
 from datetime import datetime, timedelta, timezone
-from collections import defaultdict
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
 from .config import settings
+from .rate_limit import SlidingWindowLimiter, client_ip
 from .schemas import LoginIn, TokenOut
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -18,31 +17,18 @@ bearer = HTTPBearer(auto_error=False)
 ALGORITHM = "HS256"
 
 # ── Rate Limiting ساده برای login ─────────────────────────────────────────────
-# ساختار: { ip: [timestamp1, timestamp2, ...] }
-_login_attempts: dict[str, list[float]] = defaultdict(list)
-RATE_LIMIT_WINDOW = 60  # ثانیه
-RATE_LIMIT_MAX = 5      # حداکثر تعداد تلاش در بازه
-
-
-def _check_rate_limit(ip: str) -> None:
-    """بررسی نرخ درخواست — اگر بیش از حد مجاز باشد خطا برمی‌گرداند"""
-    now = time.time()
-    # حذف تلاش‌های قدیمی‌تر از بازه زمانی
-    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < RATE_LIMIT_WINDOW]
-    if len(_login_attempts[ip]) >= RATE_LIMIT_MAX:
-        raise HTTPException(
-            status_code=429,
-            detail="تعداد تلاش‌های ورود بیش از حد مجاز است — لطفاً یک دقیقه صبر کنید",
-        )
-    _login_attempts[ip].append(now)
+login_limiter = SlidingWindowLimiter(
+    max_requests=5,  # حداکثر تعداد تلاش در بازه
+    window_seconds=60,  # ثانیه
+    detail="تعداد تلاش‌های ورود بیش از حد مجاز است — لطفاً یک دقیقه صبر کنید",
+)
 
 
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginIn, request: Request):
     """مقایسه رمز واردشده با رمزهای تعریف‌شده در .env و صدور توکن با نقش مناسب"""
-    # دریافت IP کلاینت برای rate limiting
-    client_ip = request.client.host if request.client else "unknown"
-    _check_rate_limit(client_ip)
+    # بررسی نرخ درخواست بر اساس IP کلاینت
+    login_limiter.check(client_ip(request))
 
     # بررسی رمز صندوق
     if body.password == settings.cashier_password:

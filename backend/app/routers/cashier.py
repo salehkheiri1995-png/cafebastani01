@@ -3,7 +3,7 @@ import json
 from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import models
 from ..auth import require_auth
@@ -29,7 +29,11 @@ def today_orders(
     query = db.query(models.Order).filter(models.Order.created_at >= start_of_today)
     if status:
         query = query.filter(models.Order.status == status)
-    orders = query.order_by(models.Order.created_at.desc()).all()
+    orders = (
+        query.options(selectinload(models.Order.items))  # جلوگیری از N+1
+        .order_by(models.Order.created_at.desc())
+        .all()
+    )
     return [order_to_out(o, with_qr=False) for o in orders]
 
 

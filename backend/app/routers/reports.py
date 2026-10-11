@@ -4,7 +4,8 @@ from io import BytesIO
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 
 from .. import models
 from ..auth import require_role
@@ -73,7 +74,8 @@ def list_all_orders(
         )
 
     orders = (
-        query.order_by(models.Order.created_at.desc())
+        query.options(selectinload(models.Order.items))  # جلوگیری از N+1
+        .order_by(models.Order.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
@@ -115,20 +117,25 @@ def summary(
     db: Session = Depends(get_db),
 ):
     """آمار کلی: تعداد و مجموع مبلغ به تفکیک وضعیت"""
-    query = db.query(models.Order)
+    query = db.query(
+        models.Order.status,
+        func.count(models.Order.id),
+        func.coalesce(func.sum(models.Order.total_amount), 0),
+    )
     start, end = _date_range(period, date_from, date_to)
     if start:
         query = query.filter(models.Order.created_at >= start)
     if end:
         query = query.filter(models.Order.created_at <= end)
 
-    orders = query.all()
-    result: dict = {"total_count": len(orders), "total_amount": 0, "by_status": {}}
-    for o in orders:
-        result["total_amount"] += o.total_amount
-        result["by_status"].setdefault(o.status, {"count": 0, "amount": 0})
-        result["by_status"][o.status]["count"] += 1
-        result["by_status"][o.status]["amount"] += o.total_amount
+    # جمع‌آوری در خود دیتابیس به‌جای حلقه روی همه سفارش‌ها
+    rows = query.group_by(models.Order.status).all()
+
+    result: dict = {"total_count": 0, "total_amount": 0, "by_status": {}}
+    for status, count, amount in rows:
+        result["total_count"] += count
+        result["total_amount"] += amount
+        result["by_status"][status] = {"count": count, "amount": amount}
     return result
 
 
@@ -158,7 +165,11 @@ def export_excel(
         query = query.filter(
             models.Order.code.ilike(s) | models.Order.customer_name.ilike(s)
         )
-    orders = query.order_by(models.Order.created_at.desc()).all()
+    orders = (
+        query.options(selectinload(models.Order.items))  # جلوگیری از N+1
+        .order_by(models.Order.created_at.desc())
+        .all()
+    )
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -238,7 +249,11 @@ def export_pdf(
         query = query.filter(
             models.Order.code.ilike(s) | models.Order.customer_name.ilike(s)
         )
-    orders = query.order_by(models.Order.created_at.desc()).all()
+    orders = (
+        query.options(selectinload(models.Order.items))  # جلوگیری از N+1
+        .order_by(models.Order.created_at.desc())
+        .all()
+    )
 
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=1*cm, leftMargin=1*cm, topMargin=1.5*cm, bottomMargin=1*cm)
@@ -295,18 +310,30 @@ def dashboard_today(db: Session = Depends(get_db)):
     """آمار امروز: تعداد سفارش، درآمد، میانگین مبلغ"""
     start_of_today = datetime.combine(datetime.now().date(), time.min)
     end_of_today = datetime.combine(datetime.now().date(), time.max)
-    orders = (
-        db.query(models.Order)
+    rows = (
+        db.query(
+            models.Order.status,
+            func.count(models.Order.id),
+            func.coalesce(func.sum(models.Order.total_amount), 0),
+        )
         .filter(models.Order.created_at >= start_of_today)
         .filter(models.Order.created_at <= end_of_today)
+        .group_by(models.Order.status)
         .all()
     )
-    completed = [o for o in orders if o.status == "completed"]
-    total_revenue = sum(o.total_amount for o in completed)
-    avg_amount = total_revenue // len(completed) if completed else 0
+
+    total_orders = 0
+    completed_orders = 0
+    total_revenue = 0
+    for status, count, amount in rows:
+        total_orders += count
+        if status == "completed":
+            completed_orders = count
+            total_revenue = amount
+    avg_amount = total_revenue // completed_orders if completed_orders else 0
     return {
-        "total_orders": len(orders),
-        "completed_orders": len(completed),
+        "total_orders": total_orders,
+        "completed_orders": completed_orders,
         "total_revenue": total_revenue,
         "avg_amount": avg_amount,
     }
@@ -315,24 +342,35 @@ def dashboard_today(db: Session = Depends(get_db)):
 @router.get("/dashboard/revenue-week")
 def dashboard_revenue_week(db: Session = Depends(get_db)):
     """درآمد ۷ روز اخیر (روزانه)"""
+    today = datetime.now().date()
+    start = datetime.combine(today - timedelta(days=6), time.min)
+    end = datetime.combine(today, time.max)
+
+    # هر ۷ روز در یک کوئری — گروه‌بندی بر اساس تاریخ همان روز (تاریخ‌ها naive هستند)
+    rows = (
+        db.query(
+            func.date(models.Order.created_at),
+            func.count(models.Order.id),
+            func.coalesce(func.sum(models.Order.total_amount), 0),
+        )
+        .filter(models.Order.created_at >= start)
+        .filter(models.Order.created_at <= end)
+        .filter(models.Order.status == "completed")
+        .group_by(func.date(models.Order.created_at))
+        .all()
+    )
+    by_day = {day: (count, amount) for day, count, amount in rows}
+
     result = []
     for i in range(6, -1, -1):
-        day = datetime.now().date() - timedelta(days=i)
-        start = datetime.combine(day, time.min)
-        end = datetime.combine(day, time.max)
-        orders = (
-            db.query(models.Order)
-            .filter(models.Order.created_at >= start)
-            .filter(models.Order.created_at <= end)
-            .filter(models.Order.status == "completed")
-            .all()
-        )
-        revenue = sum(o.total_amount for o in orders)
+        day = today - timedelta(days=i)
+        key = day.strftime("%Y-%m-%d")
+        count, revenue = by_day.get(key, (0, 0))
         result.append({
-            "date": day.strftime("%Y-%m-%d"),
+            "date": key,
             "label": day.strftime("%m/%d"),
             "revenue": revenue,
-            "count": len(orders),
+            "count": count,
         })
     return result
 
@@ -340,8 +378,6 @@ def dashboard_revenue_week(db: Session = Depends(get_db)):
 @router.get("/dashboard/top-products")
 def dashboard_top_products(db: Session = Depends(get_db)):
     """۵ محصول پرفروش (بر اساس تعداد فروخته‌شده)"""
-    from sqlalchemy import func
-
     start_of_today = datetime.combine(datetime.now().date(), time.min)
     results = (
         db.query(
@@ -368,6 +404,7 @@ def dashboard_recent_orders(db: Session = Depends(get_db)):
     """۱۰ سفارش اخیر"""
     orders = (
         db.query(models.Order)
+        .options(selectinload(models.Order.items))  # جلوگیری از N+1
         .order_by(models.Order.created_at.desc())
         .limit(10)
         .all()

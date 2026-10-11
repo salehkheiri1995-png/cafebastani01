@@ -44,7 +44,9 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("categories.id"), nullable=False, index=True
+    )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -63,14 +65,16 @@ class Order(Base):
     """سفارش — کد یکتای آن محتوای QR کد است"""
 
     __tablename__ = "orders"
+    # فقط یک ایندکس برای هر ستون — هم index=True در ستون هم Index جدا نسازید
     __table_args__ = (
         Index("ix_order_status", "status"),
         Index("ix_order_created_at", "created_at"),
+        # این ایندکس یکتا، یکتایی کد سفارش را هم تضمین می‌کند
         Index("ix_order_code", "code", unique=True),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(16), unique=True, index=True, nullable=False)
+    code: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     source: Mapped[str] = mapped_column(String(20), default="online", nullable=False)
     customer_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -79,7 +83,7 @@ class Order(Base):
     payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
     queue_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, onupdate=datetime.now
     )
@@ -98,8 +102,10 @@ class OrderItem(Base):
     __tablename__ = "order_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False)
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"), nullable=False, index=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id"), nullable=False, index=True
+    )
     product_name: Mapped[str] = mapped_column(String(150), nullable=False)
     unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)

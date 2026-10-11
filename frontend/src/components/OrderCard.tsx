@@ -32,7 +32,7 @@ export default function OrderCard({ order, onStatusChange, onPaymentRequest, bus
   const actions = onStatusChange ? ACTIONS[order.status] ?? [] : [];
 
   return (
-    <div className="rounded-2xl bg-white p-5 shadow-sm">
+    <div className="rounded-2xl bg-white p-5 shadow-card">
       {/* سربرگ رسید */}
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
@@ -49,7 +49,7 @@ export default function OrderCard({ order, onStatusChange, onPaymentRequest, bus
               </div>
             )}
           </div>
-          <div className="mt-1 text-xs text-gray-500">
+          <div className="mt-1 text-2xs text-ink-muted">
             {formatTime(order.created_at)} —{" "}
             {order.source === "online" ? "سفارش آنلاین" : "سفارش حضوری"}
           </div>
@@ -59,13 +59,13 @@ export default function OrderCard({ order, onStatusChange, onPaymentRequest, bus
 
       {order.customer_name && (
         <div className="mb-1 text-sm">
-          <span className="text-gray-500">مشتری: </span>
+          <span className="text-ink-muted">مشتری: </span>
           <span className="font-bold">{order.customer_name}</span>
         </div>
       )}
       {order.note && (
         <div className="mb-2 rounded-lg bg-cream p-2 text-sm">
-          <span className="text-gray-500">توضیحات: </span>
+          <span className="text-ink-muted">توضیحات: </span>
           {order.note}
         </div>
       )}
@@ -73,13 +73,13 @@ export default function OrderCard({ order, onStatusChange, onPaymentRequest, bus
       {/* اقلام */}
       <div className="receipt-divider my-3" />
       <ul className="space-y-2">
-        {order.items.map((item, i) => (
-          <li key={i} className="flex items-baseline justify-between gap-2 text-sm">
+        {order.items.map((item) => (
+          <li key={`${item.product_id}-${item.product_name}`} className="flex items-baseline justify-between gap-2 text-sm">
             <span>
               {item.product_name}
-              <span className="text-gray-500"> × {faNum(item.quantity)}</span>
+              <span className="text-ink-muted"> × {faNum(item.quantity)}</span>
             </span>
-            <span className="whitespace-nowrap font-medium">
+            <span className="whitespace-nowrap font-medium num">
               {formatToman(item.unit_price * item.quantity)}
             </span>
           </li>
@@ -90,7 +90,7 @@ export default function OrderCard({ order, onStatusChange, onPaymentRequest, bus
       {/* جمع کل */}
       <div className="flex items-center justify-between text-base font-bold">
         <span>جمع کل</span>
-        <span className="text-saffron-dark">{formatToman(order.total_amount)}</span>
+        <span className="text-saffron-dark num">{formatToman(order.total_amount)}</span>
       </div>
 
       {/* دکمه‌های تغییر وضعیت (فقط پنل صندوق) */}

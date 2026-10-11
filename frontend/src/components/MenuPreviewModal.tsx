@@ -49,12 +49,17 @@ export default function MenuPreviewModal({ onClose }: Props) {
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
-      <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-cream sm:rounded-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="پیش‌نمایش منوی مشتری"
+        className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-cream shadow-elevated sm:rounded-3xl"
+      >
         {/* هدر مودال */}
         <div className="flex items-center justify-between border-b border-saffron/20 bg-white px-4 py-3">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🍨</span>
-            <span className="font-extrabold">پیش‌نمایش منوی مشتری</span>
+            <span className="text-xl" aria-hidden="true">🍨</span>
+            <span className="font-display text-lg leading-tight">پیش‌نمایش منوی مشتری</span>
           </div>
           <button
             type="button"
@@ -121,7 +126,7 @@ export default function MenuPreviewModal({ onClose }: Props) {
                 {cat.products.map((product) => (
                   <div
                     key={product.id}
-                    className="flex items-start justify-between gap-3 rounded-xl bg-white p-3 shadow-sm"
+                    className="flex items-start justify-between gap-3 rounded-xl bg-white p-3 shadow-card"
                   >
                     <div className="min-w-0">
                       <div className="font-bold">{product.name}</div>
@@ -129,7 +134,7 @@ export default function MenuPreviewModal({ onClose }: Props) {
                         <div className="mt-0.5 line-clamp-2 text-xs text-ink/50">{product.description}</div>
                       )}
                     </div>
-                    <div className="shrink-0 rounded-full bg-saffron-light px-2.5 py-1 text-xs font-bold text-saffron-dark">
+                    <div className="shrink-0 rounded-full bg-saffron-100 px-2.5 py-1 text-xs font-bold text-saffron-dark num">
                       {formatToman(product.price)}
                     </div>
                   </div>

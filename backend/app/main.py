@@ -1,13 +1,14 @@
 """نقطه ورود برنامه — سیستم سفارش کافه‌بستنی تی‌تی"""
+import logging
 import shutil
 from contextlib import asynccontextmanager
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import models  # noqa: F401 — لازم برای ثبت مدل‌ها قبل از create_all
@@ -16,14 +17,17 @@ from .config import settings
 from .database import Base, SessionLocal, engine, run_sqlite_migrations
 from .routers import admin, cashier, menu, orders, reports
 from .seed import seed_if_empty
-from .storage import STATIC_DIR, ensure_dirs
+from .storage import PRODUCTS_DIR, STATIC_DIR, ensure_dirs
 from .ws_manager import ws_manager
+
+logger = logging.getLogger(__name__)
 
 # ── مسیرهای مهم برای بکاپ ──
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BACKEND_DIR / "cafe.db"
 BACKUPS_DIR = BACKEND_DIR / "backups"
 FRONTEND_DIR = BACKEND_DIR / "static" / "frontend"
+FRONTEND_ROOT = FRONTEND_DIR.resolve()  # مرجع مقایسه برای ضد path traversal
 
 # ── زمان‌بند اجرای پس‌زمینه ──
 scheduler = BackgroundScheduler()
@@ -74,6 +78,14 @@ async def lifespan(app: FastAPI):
     ensure_dirs()  # ساخت پوشه static/products اگر نبود
     Base.metadata.create_all(bind=engine)
     run_sqlite_migrations(engine)  # اضافه کردن ستون‌های جدید به دیتابیس‌های قدیمی
+
+    # ── هشدار امنیتی: کلید امضای پیش‌فرض برای production خطرناک است ──
+    if settings.secret_key == "dev-secret-change-me":
+        logger.warning(
+            "SECRET_KEY هنوز مقدار پیش‌فرض «dev-secret-change-me» است — "
+            "توکن‌های JWT قابل جعل هستند؛ حتماً در .env یک کلید تصادفی بگذارید"
+        )
+
     db = SessionLocal()
     try:
         seed_if_empty(db)
@@ -107,6 +119,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="سیستم سفارش کافه‌بستنی",
     description="API سفارش‌گیری آنلاین: منوی مشتری، پنل صندوق و پنل مدیریت",
+    # مستندات فقط با DOCS_ENABLED=true (توسعه) در دسترس است
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
+    openapi_url="/openapi.json" if settings.docs_enabled else None,
     lifespan=lifespan,
 )
 
@@ -150,6 +166,26 @@ async def websocket_orders(websocket: WebSocket):
 # سرو کردن فایل‌های استاتیک (عکس محصولات) از backend/static
 # ensure_dirs قبل از mount لازم است چون StaticFiles وجود پوشه را همان لحظه چک می‌کند
 ensure_dirs()
+
+
+class ImmutableStaticFiles(StaticFiles):
+    """سرو فایل‌هایی با اسم ثابت (عکس‌های UUID محصولات) با هدر Cache-Control بلند"""
+
+    def file_response(
+        self, full_path, stat_result, scope, status_code: int = 200
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Cache-Control"] = "max-age=31536000, immutable"
+        return response
+
+
+# عکس‌های محصول اسم UUID دارند و هرگز جایگزین نمی‌شوند → کش طولانی مرورگر
+# (این mount باید قبل از mount عمومی /static ثبت شود تا اولویت داشته باشد)
+app.mount(
+    "/static/products",
+    ImmutableStaticFiles(directory=str(PRODUCTS_DIR)),
+    name="product_images",
+)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
@@ -161,10 +197,14 @@ if FRONTEND_DIR.is_dir():
     @app.get("/{full_path:path}")
     async def serve_spa(request: Request, full_path: str):
         """سرو کردن فایل‌های فرانت یا index.html برای مسیرهای SPA"""
-        # اگر فایل در فرانت وجود دارد، آن را برگردان
-        file_path = FRONTEND_DIR / full_path
-        if full_path and file_path.is_file():
-            return FileResponse(str(file_path))
+        # ضد path traversal: مسیر resolve شده باید داخل FRONTEND_DIR بماند
+        if full_path:
+            try:
+                candidate = (FRONTEND_DIR / full_path).resolve()
+                if candidate.is_relative_to(FRONTEND_ROOT) and candidate.is_file():
+                    return FileResponse(str(candidate))
+            except (OSError, ValueError):
+                pass  # مسیر نامعتبر → به index.html برمی‌گردد
         # در غیر این صورت index.html را برگردان (برای React Router)
         index = FRONTEND_DIR / "index.html"
         if index.is_file():

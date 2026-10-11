@@ -28,15 +28,12 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div
-          className="flex min-h-screen flex-col items-center justify-center px-4 text-center"
+          className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 text-center"
           dir="rtl"
-          style={{ background: "#FAF6EF" }}
         >
-          <span className="mb-4 text-6xl">⚠️</span>
-          <h2 className="mb-2 text-xl font-bold" style={{ color: "#33261D" }}>
-            مشکلی پیش آمد
-          </h2>
-          <p className="mb-6 max-w-md text-sm" style={{ color: "rgba(51,38,29,0.5)" }}>
+          <span className="mb-4 text-6xl" aria-hidden="true">⚠️</span>
+          <h2 className="font-display mb-2 text-2xl text-ink">مشکلی پیش آمد</h2>
+          <p className="mb-6 max-w-md text-sm text-ink-muted">
             {this.state.error?.message || "خطای غیرمنتظره‌ای رخ داد"}
           </p>
           <button
@@ -45,8 +42,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               this.setState({ hasError: false, error: null });
               window.location.href = "/";
             }}
-            className="rounded-xl px-6 py-3 text-sm font-bold text-white"
-            style={{ background: "linear-gradient(135deg, #E9A13B, #B8791A)" }}
+            className="gradient-saffron rounded-xl px-6 py-3 text-sm font-bold text-white shadow-warm transition-all active:scale-95"
           >
             بازگشت به صفحه اصلی
           </button>

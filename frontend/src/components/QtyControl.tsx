@@ -17,7 +17,7 @@ export default function QtyControl({ value, onChange, disabled, compact }: Props
         disabled={disabled}
         className={`gradient-saffron text-white font-bold transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed shadow-warm ${
           compact
-            ? "rounded-lg px-3 py-1 text-[11px]"
+            ? "rounded-lg px-3 py-1 text-2xs"
             : "rounded-full px-4 py-1.5 text-sm"
         }`}
       >

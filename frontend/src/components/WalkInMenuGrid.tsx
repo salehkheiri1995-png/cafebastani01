@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { MenuCategory } from "../types";
+import { categoryEmoji } from "../utils/category";
 import { formatToman } from "../utils/format";
 import { faNum } from "../utils/format";
 
@@ -39,17 +40,6 @@ export default function WalkInMenuGrid({ menu, cart, onQtyChange, onRefresh }: P
       ? menu.flatMap((c) => c.products)
       : (menu.find((c) => c.id === activeCat)?.products ?? []);
 
-  // emoji پیشفرض بر اساس نام دسته
-  const catEmoji = (catName: string): string => {
-    const n = catName.toLowerCase();
-    if (n.includes("بستنی")) return "🍨";
-    if (n.includes("قهوه") || n.includes("کافه")) return "☕";
-    if (n.includes("آبمیوه") || n.includes("نوشیدنی")) return "🥤";
-    if (n.includes("کیک") || n.includes("شیرینی")) return "🍰";
-    if (n.includes("ساندویچ") || n.includes("غذا")) return "🥪";
-    return "🍨";
-  };
-
   const catName = (catId: number) =>
     menu.find((c) => c.id === catId)?.name ?? "";
 
@@ -70,6 +60,8 @@ export default function WalkInMenuGrid({ menu, cart, onQtyChange, onRefresh }: P
             <button
               type="button"
               title="نمایش کارتی"
+              aria-label="نمایش کارتی"
+              aria-pressed={viewMode === "grid"}
               onClick={() => setMode("grid")}
               className={`px-2.5 py-1.5 text-sm transition-colors ${
                 viewMode === "grid" ? "bg-ink text-white" : "bg-white hover:bg-saffron-light"
@@ -80,6 +72,8 @@ export default function WalkInMenuGrid({ menu, cart, onQtyChange, onRefresh }: P
             <button
               type="button"
               title="نمایش لیستی"
+              aria-label="نمایش لیستی"
+              aria-pressed={viewMode === "list"}
               onClick={() => setMode("list")}
               className={`border-r border-saffron/30 px-2.5 py-1.5 text-sm transition-colors ${
                 viewMode === "list" ? "bg-ink text-white" : "bg-white hover:bg-saffron-light"
@@ -122,7 +116,7 @@ export default function WalkInMenuGrid({ menu, cart, onQtyChange, onRefresh }: P
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
             {visibleProducts.map((product) => {
               const qty = cart[product.id] ?? 0;
-              const emoji = catEmoji(catName(product.category_id));
+              const emoji = categoryEmoji(catName(product.category_id));
               return (
                 <div
                   key={product.id}

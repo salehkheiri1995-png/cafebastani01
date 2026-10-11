@@ -2,11 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══ پالت رنگی به صورت متغیر CSS (برای استایل‌های خارج از Tailwind) ═══ */
+:root {
+  --cream: #faf6ef;
+  --ink: #2e231b;
+  --saffron: #e9a13b;
+  --saffron-dark: #b8791a;
+  --pistachio: #2f7d5d;
+  --berry: #b3323b;
+}
+
 /* ═══ پایه صفحه ═══ */
-body {
-  @apply bg-cream font-vazir text-ink antialiased;
-  -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: contain;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-cream text-ink antialiased;
+    font-family: "Estedad Variable", Vazirmatn, Tahoma, sans-serif;
+    /* خط فارسی به فاصله بیشتری نیاز دارد تا اتصال حروف خوانا بماند */
+    line-height: 1.85;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* تیترها شخصیت بصری برند را می‌سازند */
+  h1,
+  h2,
+  h3 {
+    line-height: 1.4;
+    text-wrap: balance;
+  }
+
+  /* حالت فوکوس برای کیبورد — پیش‌فرض مرورگر حذف شده بود */
+  :focus-visible {
+    @apply outline-none ring-2 ring-saffron/70 ring-offset-2 ring-offset-cream;
+  }
+
+  ::selection {
+    background: rgba(233, 161, 59, 0.35);
+    color: var(--ink);
+  }
+
+  /* اسکرول‌بار گرم و ظریف */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(46, 35, 27, 0.2) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: rgba(46, 35, 27, 0.18);
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(46, 35, 27, 0.32);
+  }
 }
 
 /* ═══ خط پرفراژ رسید — امضای بصری پروژه ═══ */
@@ -23,64 +82,6 @@ body {
   scrollbar-width: none;
 }
 
-/* ═══ انیمیشن‌های منو ═══ */
-@keyframes float {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-8px) rotate(3deg); }
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes slideInRight {
-  from { opacity: 0; transform: translateX(20px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(233, 161, 59, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(233, 161, 59, 0); }
-}
-
-@keyframes bounce-in {
-  0% { transform: scale(0.8); opacity: 0; }
-  60% { transform: scale(1.05); }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-.animate-shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 2s ease-in-out infinite;
-}
-
-.animate-fade-in-up {
-  animation: fadeInUp 0.4s ease-out both;
-}
-
-.animate-slide-in-right {
-  animation: slideInRight 0.3s ease-out both;
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-.animate-bounce-in {
-  animation: bounce-in 0.3s ease-out both;
-}
-
 /* ═══ تاخیرهای انیمیشن برای لیست محصولات ═══ */
 .stagger-1 { animation-delay: 0.05s; }
 .stagger-2 { animation-delay: 0.1s; }
@@ -91,42 +92,38 @@ body {
 
 /* ═══ افکت شیشه‌ای ═══ */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-
-/* ═══ سایه‌های سفارشی ═══ */
-.shadow-soft {
-  box-shadow: 0 2px 12px rgba(51, 38, 29, 0.08);
-}
-
-.shadow-warm {
-  box-shadow: 0 4px 20px rgba(184, 121, 26, 0.15);
-}
-
-.shadow-elevated {
-  box-shadow: 0 8px 30px rgba(51, 38, 29, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
 
 /* ═══ گرادینت‌های سفارشی ═══ */
 .gradient-saffron {
-  background: linear-gradient(135deg, #E9A13B 0%, #B8791A 100%);
+  background: linear-gradient(135deg, #f0ae4e 0%, #e9a13b 45%, #b8791a 100%);
 }
 
 .gradient-header {
-  background: linear-gradient(160deg, #E9A13B 0%, #C48A20 30%, #8B5E14 60%, #33261D 100%);
+  background:
+    radial-gradient(120% 90% at 85% 0%, rgba(247, 230, 196, 0.28) 0%, transparent 55%),
+    linear-gradient(155deg, #e9a13b 0%, #c48a20 34%, #8b5e14 62%, #2e231b 100%);
+}
+
+.gradient-dark {
+  background: linear-gradient(135deg, #2e231b 0%, #4a3728 55%, #2e231b 100%);
 }
 
 /* ═══ افکت‌های تعاملی ═══ */
 .hover-lift {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-3px);
 }
 .hover-lift:active {
-  transform: scale(0.97);
+  transform: scale(0.98);
 }
 
-/* ═══ متن یک خطی با dot indicator ═══ */
+/* ═══ متن یک خطی / چند خطی با dot indicator ═══ */
 .text-clamp-1 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -135,6 +132,24 @@ body {
 
 /* ═══ پس‌زمینه نقاط تزئینی ═══ */
 .dot-pattern {
-  background-image: radial-gradient(circle, rgba(233, 161, 59, 0.08) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.14) 1px, transparent 1px);
   background-size: 20px 20px;
+}
+
+/* ═══ اعداد ثابت‌عرض (برای ستون‌های جدول و مبالغ) ═══ */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ═══ احترام به تنظیمات کاهش حرکت سیستم ═══ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

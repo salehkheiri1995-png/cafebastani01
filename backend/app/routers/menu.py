@@ -1,6 +1,9 @@
 """endpoint عمومی منو — بدون نیاز به لاگین"""
+import threading
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import models
 from ..database import get_db
@@ -9,18 +12,40 @@ from ..schemas import MenuCategoryOut, ProductOut
 
 router = APIRouter(prefix="/api", tags=["menu"])
 
+# ── کش سبک درون‌process برای منو ──
+# پاسخ فقط به وضعیت باز/بسته بودن کافه بستگی دارد؛ کلید کش همان وضعیت است
+# (کافه که بسته باشد، قبل از رسیدن به کش 503 برمی‌گردد و کش نادیده گرفته می‌شود)
+MENU_CACHE_TTL = 5.0  # ثانیه
+_menu_cache: dict[bool, tuple[float, list[MenuCategoryOut]]] = {}
+_menu_cache_lock = threading.Lock()
+
+
+def invalidate_menu_cache() -> None:
+    """پاک کردن کش منو — بعد از هر تغییر در منو از پنل مدیریت صدا زده می‌شود"""
+    with _menu_cache_lock:
+        _menu_cache.clear()
+
 
 @router.get("/menu", response_model=list[MenuCategoryOut])
 def get_menu(db: Session = Depends(get_db)):
     """کل منو برای مشتری: دسته‌های فعال + فقط محصولات موجود،
-    مرتب‌شده بر اساس ترتیب نمایش. اگر کافه تعطیل باشد خطای 507 برمی‌گرداند."""
-    if not runtime_settings.is_open:
+    مرتب‌شده بر اساس ترتیب نمایش. اگر کافه تعطیل باشد خطای 503 برمی‌گرداند."""
+    is_open = runtime_settings.is_open
+    if not is_open:
         raise HTTPException(
             status_code=503,
             detail="کافه در حال حاضر پذیرش سفارش ندارد",
         )
+
+    now = time.monotonic()
+    with _menu_cache_lock:
+        cached = _menu_cache.get(is_open)
+        if cached is not None and now - cached[0] < MENU_CACHE_TTL:
+            return cached[1]
+
     categories = (
         db.query(models.Category)
+        .options(selectinload(models.Category.products))  # جلوگیری از N+1
         .filter(models.Category.is_active.is_(True))
         .order_by(models.Category.display_order, models.Category.id)
         .all()
@@ -40,4 +65,7 @@ def get_menu(db: Session = Depends(get_db)):
                 products=[ProductOut.model_validate(p) for p in products],
             )
         )
+
+    with _menu_cache_lock:
+        _menu_cache[is_open] = (now, result)
     return result

@@ -13,7 +13,7 @@ const STYLES: Record<OrderStatus, string> = {
   pending: "bg-saffron-light text-saffron-dark",
   preparing: "bg-blue-100 text-blue-800",
   ready: "bg-pistachio-light text-pistachio",
-  completed: "bg-gray-200 text-gray-600",
+  completed: "bg-cream-300 text-ink-soft",
   cancelled: "bg-berry-light text-berry",
 };
 

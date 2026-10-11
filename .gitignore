@@ -5,6 +5,8 @@ __pycache__/
 
 # دیتابیس و تنظیمات محلی — این‌ها نباید وارد گیت شوند
 backend/cafe.db
+backend/cafe.db-shm
+backend/cafe.db-wal
 backend/.env
 backend/cafe_state.json
 backend/backups/

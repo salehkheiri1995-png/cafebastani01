@@ -1,16 +1,24 @@
 """ثبت و مشاهده سفارش توسط مشتری — بدون نیاز به لاگین"""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..database import get_db
 from ..qr import make_qr_base64
+from ..rate_limit import SlidingWindowLimiter, client_ip
 from ..runtime_settings import runtime_settings
 from ..schemas import OrderCreate, OrderOut
 from ..services import create_order
 from ..ws_manager import ws_manager
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
+
+# ── Rate Limiting برای ثبت سفارش آنلاین ──
+order_limiter = SlidingWindowLimiter(
+    max_requests=20,  # حداکثر ۲۰ سفارش در دقیقه برای هر IP
+    window_seconds=60,
+    detail="تعداد سفارش بیش از حد مجاز است — لطفاً کمی صبر کنید و دوباره تلاش کنید",
+)
 
 
 def order_to_out(order: models.Order, with_qr: bool = True) -> OrderOut:
@@ -21,8 +29,10 @@ def order_to_out(order: models.Order, with_qr: bool = True) -> OrderOut:
     return out
 
 
+# عمداً def است نه async def: کل کار endpoint (دیتابیس + تولید QR) همزمانی است
+# و FastAPI آن را در threadpool اجرا می‌کند تا event loop بلاک نشود.
 @router.post("", response_model=OrderOut, status_code=201)
-async def place_order(body: OrderCreate, db: Session = Depends(get_db)):
+def place_order(body: OrderCreate, request: Request, db: Session = Depends(get_db)):
     """ثبت سفارش آنلاین مشتری — وضعیت اولیه pending.
     در پاسخ، تصویر QR کد سفارش هم برمی‌گردد تا به مشتری نمایش داده شود.
     همچنین اعلان WebSocket به پنل صندوق ارسال می‌شود."""
@@ -31,14 +41,14 @@ async def place_order(body: OrderCreate, db: Session = Depends(get_db)):
             status_code=503,
             detail="کافه در حال حاضر پذیرش سفارش ندارد",
         )
+    order_limiter.check(client_ip(request))
     order = create_order(db, body, source="online", status="pending")
 
-    # ارسال اعلان WebSocket به همه کلاینت‌های متصل
-    await ws_manager.broadcast({
+    # ارسال اعلان WebSocket به همه کلاینت‌های متصل — حداقلی که پنل صندوق لازم دارد؛
+    # خود سفارش جداگانه از REST واکشی می‌شود
+    ws_manager.broadcast_threadsafe({
         "type": "new_order",
-        "order_id": order.id,
         "code": order.code,
-        "total": order.total_amount,
     })
 
     return order_to_out(order)

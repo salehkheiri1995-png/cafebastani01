@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     # حالت تعطیل کافه
     is_open: bool = True
+    # نمایش مستندات API (/docs، /redoc، /openapi.json) — در production باید false بماند
+    docs_enabled: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:
