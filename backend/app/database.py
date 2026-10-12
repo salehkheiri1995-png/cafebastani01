@@ -1,6 +1,7 @@
 """اتصال به دیتابیس SQLite و مدیریت Session + migration سبک"""
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
@@ -144,3 +145,47 @@ def run_sqlite_migrations(db_engine: Engine) -> None:
                     ))
         except Exception:
             logger.exception("ساخت ایندکس یکتای idempotency_key ناموفق بود")
+
+    # ── یکپارچه‌سازی شماره صف امروز ──
+    # قبلاً فقط سفارش‌های آنلاین (pending) شماره صف می‌گرفتند و سفارش‌های دستی
+    # بدون شماره ثبت می‌شدند. سفارش‌های «امروزِ» بدون شماره، به ترتیب زمان ثبت،
+    # شماره‌ای بعد از بیشترین شماره امروز می‌گیرند تا صف آنلاین و دستی از یک
+    # دنباله واحد جلو برود. اجرای چندباره‌اش بی‌خطر است (فقط NULLها را پر می‌کند).
+    try:
+        start_of_today = datetime.now().strftime("%Y-%m-%d 00:00:00")
+        with db_engine.begin() as conn:
+            missing_ids = [
+                row[0]
+                for row in conn.execute(
+                    text(
+                        "SELECT id FROM orders "
+                        "WHERE created_at >= :start AND queue_number IS NULL "
+                        "ORDER BY created_at"
+                    ),
+                    {"start": start_of_today},
+                ).fetchall()
+            ]
+            if missing_ids:
+                max_queue = (
+                    conn.execute(
+                        text(
+                            "SELECT COALESCE(MAX(queue_number), 0) FROM orders "
+                            "WHERE created_at >= :start"
+                        ),
+                        {"start": start_of_today},
+                    ).scalar()
+                    or 0
+                )
+                next_queue = int(max_queue) + 1
+                for order_id in missing_ids:
+                    conn.execute(
+                        text("UPDATE orders SET queue_number = :q WHERE id = :id"),
+                        {"q": next_queue, "id": order_id},
+                    )
+                    next_queue += 1
+                logger.info(
+                    "شماره صف %d سفارش امروز بدون شماره (سفارش دستی قدیمی) تکمیل شد",
+                    len(missing_ids),
+                )
+    except Exception:
+        logger.exception("تکمیل شماره صف سفارش‌های امروز ناموفق بود")

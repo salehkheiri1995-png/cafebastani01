@@ -1,4 +1,5 @@
 """منطق مشترک ساخت سفارش — هم برای سفارش آنلاین مشتری هم سفارش دستی صندوق"""
+import threading
 import uuid
 from datetime import datetime, time
 
@@ -11,6 +12,11 @@ from .schemas import OrderCreate
 
 # تعداد تلاش برای ساخت کد سفارش یکتا در صورت برخورد (race بین دو ثبت همزمان)
 MAX_CODE_ATTEMPTS = 4  # ۱ تلاش اولیه + ۳ تلاش مجدد
+
+# قفل ثبت سفارش: شماره صف از max+1 محاسبه می‌شود؛ بدون قفل، دو ثبت همزمان
+# (چند thread از threadpool) می‌توانند یک شماره بگیرند. uvicorn تک‌پردازش اجرا
+# می‌شود و SQLite هم نوشتن را سریالایز می‌کند، پس یک قفل ساده کافی است.
+_order_create_lock = threading.Lock()
 
 
 def generate_order_code(db: Session) -> str:
@@ -36,7 +42,8 @@ def get_products_with_category(db: Session, product_ids: list[int]) -> dict[int,
 
 
 def get_next_queue_number(db: Session) -> int:
-    """محاسبه شماره صف بعدی بر اساس سفارش‌های امروز"""
+    """شماره صف بعدی از ردیف مشترکِ سفارش‌های امروز — فرقی نمی‌کند سفارش
+    آنلاین باشد یا دستی؛ همه از یک دنباله واحد جلو می‌روند"""
     start_of_today = datetime.combine(datetime.now().date(), time.min)
     max_queue = (
         db.query(models.Order.queue_number)
@@ -91,42 +98,45 @@ def create_order(db: Session, body: OrderCreate, source: str, status: str) -> mo
             }
         )
 
-    # ── شماره صف ──
-    queue_num = get_next_queue_number(db) if status == "pending" else None
-
     # ── ثبت با مدیریت برخورد (race) ──
     # ایندکس یکتای code و idempotency_key برخورد همزمان را تبدیل به IntegrityError
     # می‌کند: برخورد کد سفارش → کد جدید ساخته می‌شود؛ برخورد idempotency_key →
     # سفارش قبلاً ثبت‌شده همان برمی‌گردد (پاسخ تکراری نمی‌سازد)
-    for _attempt in range(MAX_CODE_ATTEMPTS):
-        order = models.Order(
-            code=generate_order_code(db),
-            status=status,
-            source=source,
-            customer_name=(body.customer_name or None),
-            note=(body.note or None),
-            total_amount=total,
-            idempotency_key=body.idempotency_key,
-            queue_number=queue_num,
-            items=[models.OrderItem(**row) for row in item_rows],
-        )
-        db.add(order)
-        try:
-            db.commit()
-            db.refresh(order)
-            return order
-        except IntegrityError:
-            db.rollback()
-            # اگر همین idempotency_key قبلاً سفارش ثبت کرده باشد، همان را برمی‌گردانیم
-            if body.idempotency_key:
-                existing = (
-                    db.query(models.Order)
-                    .filter(models.Order.idempotency_key == body.idempotency_key)
-                    .first()
-                )
-                if existing is not None:
-                    return existing
-            # برخورد کد سفارش → در تلاش بعدی کد جدید ساخته می‌شود
+    #
+    # شماره صف برای «همه» سفارش‌ها (آنلاین و دستی) داخل قفل محاسبه می‌شود تا
+    # دنباله واحدی داشته باشند و دو ثبت همزمان شماره یکسان نگیرند
+    with _order_create_lock:
+        queue_num = get_next_queue_number(db)
+
+        for _attempt in range(MAX_CODE_ATTEMPTS):
+            order = models.Order(
+                code=generate_order_code(db),
+                status=status,
+                source=source,
+                customer_name=(body.customer_name or None),
+                note=(body.note or None),
+                total_amount=total,
+                idempotency_key=body.idempotency_key,
+                queue_number=queue_num,
+                items=[models.OrderItem(**row) for row in item_rows],
+            )
+            db.add(order)
+            try:
+                db.commit()
+                db.refresh(order)
+                return order
+            except IntegrityError:
+                db.rollback()
+                # اگر همین idempotency_key قبلاً سفارش ثبت کرده باشد، همان را برمی‌گردانیم
+                if body.idempotency_key:
+                    existing = (
+                        db.query(models.Order)
+                        .filter(models.Order.idempotency_key == body.idempotency_key)
+                        .first()
+                    )
+                    if existing is not None:
+                        return existing
+                # برخورد کد سفارش → در تلاش بعدی کد جدید ساخته می‌شود
 
     # هیچ کد یکتایی پیدا نشد (یا خطای دیگری بود) — تداخل سرور
     raise HTTPException(
