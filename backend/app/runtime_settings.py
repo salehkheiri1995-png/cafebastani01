@@ -1,9 +1,12 @@
 """تنظیمات قابل تغییر در زمان اجرا — مثل حالت تعطیل کافه"""
 import json
+import logging
 import threading
 from pathlib import Path
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 STATE_FILE = Path(__file__).resolve().parent.parent / "cafe_state.json"
 _lock = threading.Lock()
@@ -27,7 +30,8 @@ class RuntimeSettings:
         try:
             STATE_FILE.write_text(json.dumps({"is_open": self._is_open}))
         except Exception:
-            pass
+            # خطای نوشتن نباید برنامه را متوقف کند، ولی نباید بی‌صدا هم قورت داده شود
+            logger.exception("ذخیره فایل وضعیت کافه (cafe_state.json) ناموفق بود")
 
     @property
     def is_open(self) -> bool:

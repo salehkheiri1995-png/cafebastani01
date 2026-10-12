@@ -82,7 +82,11 @@ class Order(Base):
     total_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     payment_method: Mapped[str | None] = mapped_column(String(20), nullable=True)
     queue_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # ایندکس یکتا: ثبت همزمان دو سفارش با یک idempotency_key باید خطا بدهد
+    # (چند مقدار NULL در ایندکس UNIQUE بی‌خطر است)
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, onupdate=datetime.now

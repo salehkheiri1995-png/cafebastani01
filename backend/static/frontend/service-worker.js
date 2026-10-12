@@ -2,7 +2,7 @@
 // - منو: کش stale-while-revalidate (باز شدن سریع حتی آفلاین)
 // - صفحات: network-first با فال‌بک به کش (کاربر آفلاین هم به اپ می‌رسد)
 // - فایل‌های build شده: cache-first (نام‌شان hash دارد و تغییر نمی‌کند)
-const VERSION = "v3";
+const VERSION = "v4";
 const STATIC_CACHE = `cafe-static-${VERSION}`;
 const MENU_CACHE = `cafe-menu-${VERSION}`;
 
@@ -33,6 +33,20 @@ self.addEventListener("activate", (event) => {
             .map((n) => caches.delete(n))
         )
       )
+      // پاکسازی فایل‌های build قدیمی (/assets/…) تا نسخهٔ جدید از نو کش شود؛
+      // شل ناوبری و آیکون‌ها برای حالت آفلاین دست‌نخورده می‌مانند
+      .then(() => caches.open(STATIC_CACHE))
+      .then((cache) =>
+        cache
+          .keys()
+          .then((requests) =>
+            Promise.all(
+              requests
+                .filter((req) => new URL(req.url).pathname.startsWith("/assets/"))
+                .map((req) => cache.delete(req))
+            )
+          )
+      )
       .then(() => self.clients.claim())
   );
 });
@@ -59,7 +73,24 @@ async function menuWithCache(request) {
   return Response.error();
 }
 
-/** network-first برای صفحات و فایل‌های build شده */
+/** cache-first برای فایل‌های build شده (/assets/ — نام‌شان hash دارد و ثابت است) */
+async function cacheFirst(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  try {
+    const response = await fetch(request);
+    if (response.ok && response.type === "basic") {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    // آفلاین و بدون کش → خطای شبکه تا کلاینت پیام مناسب نشان دهد
+    return Response.error();
+  }
+}
+
+/** network-first برای ناوبری‌ها (صفحات SPA) با فال‌بک به کش */
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
@@ -92,9 +123,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // منابع build شده (hash دارند) → cache-first
+  // منابع build شده (hash دارند و تغییر نمی‌کنند) → cache-first
   if (url.pathname.startsWith("/assets/")) {
-    event.respondWith(networkFirst(request, STATIC_CACHE));
+    event.respondWith(cacheFirst(request));
     return;
   }
 

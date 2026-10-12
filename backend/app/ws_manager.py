@@ -25,14 +25,28 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict) -> None:
         """ارسال پیام به همه کلاینت‌های متصل — اتصال‌های خراب حذف می‌شوند"""
-        dead: list[WebSocket] = []
-        for connection in self._connections:
-            try:
-                await connection.send_json(message)
-            except Exception:
-                dead.append(connection)
-        for d in dead:
-            self.disconnect(d)
+        if not self._connections:
+            return
+        # کپی از لیست چون disconnect در حین بررسی ممکن است آن را تغییر دهد
+        connections = list(self._connections)
+        results = await asyncio.gather(
+            *(connection.send_json(message) for connection in connections),
+            return_exceptions=True,
+        )
+        for connection, result in zip(connections, results):
+            if isinstance(result, BaseException):
+                self.disconnect(connection)
+
+    async def close_all(self, code: int = 1001) -> None:
+        """بستن همه اتصال‌های باز هنگام خاموش شدن سرور"""
+        if not self._connections:
+            return
+        connections = list(self._connections)
+        self._connections.clear()
+        await asyncio.gather(
+            *(connection.close(code=code) for connection in connections),
+            return_exceptions=True,
+        )
 
     def broadcast_threadsafe(self, message: dict) -> None:
         """ارسال پیام از یک thread دیگر (مثلاً threadpool FastAPI) به event loop اصلی.

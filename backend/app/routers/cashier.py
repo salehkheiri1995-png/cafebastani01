@@ -9,7 +9,7 @@ from .. import models
 from ..auth import require_auth
 from ..database import get_db
 from ..schemas import OrderCreate, OrderEditIn, OrderEditLogOut, OrderOut, StatusUpdate
-from ..services import create_order
+from ..services import create_order, get_products_with_category
 from .orders import order_to_out
 
 router = APIRouter(
@@ -32,6 +32,8 @@ def today_orders(
     orders = (
         query.options(selectinload(models.Order.items))  # جلوگیری از N+1
         .order_by(models.Order.created_at.desc())
+        # سقف ۵۰۰ سفارش در هر پاسخ تا کوئری رشد نکند (صف امروز هرگز به این حد نمی‌رسد)
+        .limit(500)
         .all()
     )
     return [order_to_out(o, with_qr=False) for o in orders]
@@ -112,10 +114,14 @@ def edit_order_items(order_id: int, body: OrderEditIn, db: Session = Depends(get
     old_total = order.total_amount
 
     # ساخت آیتم‌های جدید با قیمت لحظه‌ای از دیتابیس
+    # محصولات با دسته‌شان در یک کوئری خوانده می‌شوند (جلوگیری از N+1)
+    products = get_products_with_category(
+        db, [item_in.product_id for item_in in body.items]
+    )
     new_items: list[models.OrderItem] = []
     new_total = 0
     for item_in in body.items:
-        product = db.get(models.Product, item_in.product_id)
+        product = products.get(item_in.product_id)
         if product is None or not product.is_available or not product.category.is_active:
             name = product.name if product else f"id={item_in.product_id}"
             raise HTTPException(status_code=400, detail=f"محصول «{name}» موجود نیست")

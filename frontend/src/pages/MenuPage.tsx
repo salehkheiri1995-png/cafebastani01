@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import QtyControl from "../components/QtyControl";
+import { useDialogA11y } from "../hooks/useDialogA11y";
+import { usePersistedCart } from "../hooks/usePersistedCart";
 import type { MenuCategory, Order, Product } from "../types";
 import { categoryEmoji, categoryGradient } from "../utils/category";
 import { faNum, formatToman } from "../utils/format";
@@ -14,6 +16,22 @@ const CLOSED = "__CLOSED__";
 function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * نرمال‌سازی متن فارسی برای جستجو:
+ * نیم‌فاصله (ZWNJ) حذف می‌شود، نویسه‌های عربی (ي/ى/ك) با معادل فارسی یکی
+ * می‌شوند، فاصله‌های اضافه جمع می‌شوند و حروف با toLocaleLowerCase('fa')
+ * تبدیل می‌شوند تا «قيمه»/«قیمه» و «كيك»/«کیک» هر دو پیدا شوند.
+ */
+function normalizeFa(text: string): string {
+  return text
+    .replace(/\u200c/g, "") // حذف نیم‌فاصله
+    .replace(/[يى]/g, "ی") // ي/ى عربی ← ی فارسی
+    .replace(/ك/g, "ک") // ك عربی ← ک فارسی
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase("fa");
 }
 
 // ═══ اسکلتون لودینگ ═════════════════════════════════════════════════════════
@@ -86,13 +104,17 @@ export default function MenuPage() {
   const navigate = useNavigate();
   const [menu, setMenu] = useState<MenuCategory[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [cart, setCart] = useState<Record<number, number>>({});
+  // سبد خرید + اسم/توضیح مشتری بین رفرش‌ها در localStorage می‌ماند
+  const { cart, setCart, customerName, setCustomerName, note, setNote, clearCart } = usePersistedCart();
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [customerName, setCustomerName] = useState("");
-  const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  // نرمال‌سازی فارسی عبارت جستجو — زودتر از بقیهٔ مقادیر مشتقه تعریف می‌شود
+  // چون اثر IntersectionObserver هم به آن وابسته است
+  const normalizedQuery = useMemo(() => normalizeFa(query), [query]);
+  const searching = normalizedQuery.length > 0;
   const sectionRefs = useRef<Record<number, HTMLElement | null>>({});
   const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
   const menuRef = useRef<MenuCategory[] | null>(null);
@@ -117,7 +139,11 @@ export default function MenuPage() {
       setMenu((prev) => (changed || prev === null ? data : prev));
       if (changed) {
         setActiveCategory((prev) => prev ?? (data[0]?.id ?? null));
-        const availableIds = new Set(data.flatMap((c) => c.products.map((p) => p.id)));
+        // سبد ذخیره‌شده با منوی تازه تطبیق داده می‌شود: محصولات حذف‌شده
+        // و ناموجودها هم پاک می‌شوند تا سفارش ناممکن در سبد نماند
+        const availableIds = new Set(
+          data.flatMap((c) => c.products.filter((p) => p.is_available).map((p) => p.id)),
+        );
         setCart((prev) => {
           let dirty = false;
           const next: Record<number, number> = {};
@@ -169,6 +195,8 @@ export default function MenuPage() {
   }, [loadMenu]);
 
   // ── IntersectionObserver برای تب فعال (فقط با تغییر لیست دسته‌ها) ─────────
+  // «searching» هم در deps هست چون هنگام جستجو بخش‌ها از DOM حذف می‌شوند و
+  // بعد از پاک کردن جستجو دوباره ساخته می‌شوند → observe باید تازه شود
   const catSignature = menu?.map((c) => c.id).join(",") ?? "";
   useEffect(() => {
     if (!catSignature) return;
@@ -189,7 +217,7 @@ export default function MenuPage() {
       if (el) observer.observe(el);
     }
     return () => observer.disconnect();
-  }, [catSignature]);
+  }, [catSignature, searching]);
 
   // ── مقادیر مشتقه ──────────────────────────────────────────────────────────
   const allProducts = useMemo(() => (menu ?? []).flatMap((c) => c.products), [menu]);
@@ -211,6 +239,18 @@ export default function MenuPage() {
     () => (menu ?? []).flatMap((c) => c.products.filter((p) => p.is_available).slice(0, 1)).slice(0, 6),
     [menu],
   );
+
+  // ── جستجوی سمت کلاینت روی همان محصولات لودشده ─────────────────────────────
+  // هنگام جستجو، نتایج از همهٔ دسته‌ها جمع می‌شوند (فیلتر دسته نادیده گرفته می‌شود)
+  const searchResults = useMemo(() => {
+    if (!searching) return [];
+    return allProducts.filter((p) => normalizeFa(p.name).includes(normalizedQuery));
+  }, [allProducts, normalizedQuery, searching]);
+
+  // عنوان صفحه در تب مرورگر
+  useEffect(() => {
+    document.title = "کافه‌بستنی — منو";
+  }, []);
 
   // ── عملیات ─────────────────────────────────────────────────────────────────
   const setQty = useCallback((productId: number, qty: number) => {
@@ -238,6 +278,8 @@ export default function MenuPage() {
         idempotency_key: idemKeyRef.current,
       });
       idemKeyRef.current = null;
+      // سفارش ثبت شد → سبد و اطلاعات مشتری برای خرید بعدی پاک می‌شود
+      clearCart();
       navigate(`/order/${order.code}`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 503) {
@@ -253,20 +295,25 @@ export default function MenuPage() {
   };
 
   const scrollToCategory = (id: number) => {
+    // کلیک روی دسته یعنی کاربر می‌خواهد مرور کند، نه جستجو → جستجو پاک می‌شود
+    const wasSearching = query.length > 0;
+    if (wasSearching) setQuery("");
     setActiveCategory(id);
-    tabRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-    sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const scrollTo = () => {
+      tabRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    // اگر جستجو پاک شده باشد، بخش‌ها تا رندر بعدی در DOM نیستند → اسکرول یک فریم عقب می‌افتد
+    if (wasSearching) requestAnimationFrame(scrollTo);
+    else scrollTo();
   };
 
-  // بستن شیت چک‌اوت با کلید Escape
-  useEffect(() => {
-    if (!checkoutOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !submitting) setCheckoutOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [checkoutOpen, submitting]);
+  // شیت چک‌اوت: فوکوس اولیه، تلهٔ Tab، قفل اسکرول بدنه، Escape و بازگرداندن فوکوس
+  const checkoutDialogRef = useRef<HTMLDivElement>(null);
+  const closeCheckout = useCallback(() => {
+    if (!submitting) setCheckoutOpen(false);
+  }, [submitting]);
+  useDialogA11y(checkoutDialogRef, closeCheckout, checkoutOpen);
 
   const closed = loadError === CLOSED;
 
@@ -330,13 +377,39 @@ export default function MenuPage() {
         </svg>
       </header>
 
+      {/* ══ جستجوی محصولات ══════════════════════════════════════════════════ */}
+      {menu && menu.length > 0 && (
+        <div className="px-4 pt-3">
+          <div className="relative">
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint" aria-hidden="true">🔍</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="جستجو در منو…"
+              aria-label="جستجو در منو"
+              enterKeyHint="search"
+              className="w-full rounded-2xl border border-saffron/20 bg-white py-3 pr-10 pl-10 text-sm text-ink outline-none shadow-soft transition-all placeholder:text-ink-faint focus:border-saffron focus:shadow-warm [&::-webkit-search-cancel-button]:hidden"
+            />
+            {searching && (
+              <button type="button" onClick={() => setQuery("")}
+                aria-label="پاک کردن جستجو"
+                className="absolute left-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-cream-200 text-xs text-ink-muted transition-all hover:bg-berry-light hover:text-berry active:scale-90">
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ══ تب‌های دسته‌بندی (چسبان) ═══════════════════════════════════════ */}
       {menu && menu.length > 0 && (
         <nav aria-label="دسته‌بندی‌ها"
           className="no-scrollbar sticky top-0 z-20 border-b border-saffron/10 glass px-4 py-2.5 shadow-[0_10px_24px_-18px_rgba(46,35,27,0.6)]">
           <div className="flex gap-2 overflow-x-auto">
             {menu.map((cat) => {
-              const isActive = activeCategory === cat.id;
+              // هنگام جستجو هیچ تبی فعال نیست چون نتایج از همهٔ دسته‌ها می‌آیند
+              const isActive = !searching && activeCategory === cat.id;
               return (
                 <button
                   key={cat.id}
@@ -408,8 +481,8 @@ export default function MenuPage() {
           </div>
         )}
 
-        {/* ══ پیشنهاد ویژه ═══════════════════════════════════════════════════ */}
-        {menu && menu.length > 0 && featuredProducts.length > 0 && (
+        {/* ══ پیشنهاد ویژه (هنگام جستجو پنهان می‌شود) ═══════════════════════ */}
+        {menu && menu.length > 0 && !searching && featuredProducts.length > 0 && (
           <section aria-label="پیشنهاد ویژه" className="animate-fade-in-up">
             <div className="mb-4 flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-saffron-100">
@@ -455,8 +528,41 @@ export default function MenuPage() {
           </section>
         )}
 
-        {/* ══ بخش‌های دسته‌بندی ═════════════════════════════════════════════ */}
-        {menu?.map((cat, catIdx) => (
+        {/* ══ نتایج جستجو (جایگزین بخش‌های دسته هنگام جستجو) ═══════════════ */}
+        {searching && !!menu && menu.length > 0 && (
+          <section aria-label="نتایج جستجو" className="animate-fade-in-up">
+            <div className="mb-4 flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-saffron-100">
+                <span className="text-sm" aria-hidden="true">🔍</span>
+              </div>
+              <h2 className="font-display text-xl text-ink">
+                نتایج جستجو
+                <span className="mr-1.5 text-2xs font-normal text-ink-muted num">({faNum(searchResults.length)})</span>
+              </h2>
+            </div>
+
+            {searchResults.length > 0 ? (
+              <ProductGroup products={searchResults} catNameById={catNameById}
+                cart={cart} onQtyChange={setQty} />
+            ) : (
+              /* حالت خالی دوستانه با دکمهٔ پاک کردن */
+              <div className="flex flex-col items-center gap-4 rounded-2xl bg-white px-5 py-10 text-center shadow-card">
+                <span className="text-5xl" aria-hidden="true">🧐</span>
+                <div>
+                  <p className="font-display text-lg text-ink">محصولی با این نام پیدا نشد</p>
+                  <p className="mt-1 text-xs text-ink-muted">حروف دیگری را امتحان کن یا جستجو را پاک کن</p>
+                </div>
+                <button type="button" onClick={() => setQuery("")}
+                  className="gradient-saffron rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-warm transition-all active:scale-95">
+                  پاک کردن جستجو
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ══ بخش‌های دسته‌بندی (هنگام جستجو پنهان می‌شوند) ═════════════════ */}
+        {!searching && menu?.map((cat, catIdx) => (
           <section key={cat.id}
             ref={(el) => { sectionRefs.current[cat.id] = el; }}
             data-cat-id={cat.id}
@@ -475,32 +581,20 @@ export default function MenuPage() {
               <div className="h-px flex-1 bg-gradient-to-l from-transparent to-saffron/25" aria-hidden="true" />
             </div>
 
-            {/* نمایش کارتی یا لیستی بر اساس وجود تصویر */}
-            {cat.products.some((p) => p.image_url) ? (
-              <div className="grid grid-cols-2 gap-3">
-                {cat.products.map((product) => (
-                  <GridCard key={product.id} product={product} catName={cat.name}
-                    qty={cart[product.id] ?? 0}
-                    onQtyChange={setQty} />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-2.5">
-                {cat.products.map((product) => (
-                  <ListCard key={product.id} product={product} catName={cat.name}
-                    qty={cart[product.id] ?? 0}
-                    onQtyChange={setQty} />
-                ))}
-              </div>
-            )}
+            {/* تصمیم کارتی/لیستی به‌ازای هر محصول گرفته می‌شود، نه کل دسته */}
+            <ProductGroup products={cat.products} catNameById={catNameById}
+              cart={cart} onQtyChange={setQty} />
           </section>
         ))}
       </main>
 
       {/* ══ نوار سبد خرید ════════════════════════════════════════════════════ */}
       <div
+        aria-hidden={cartCount === 0}
         className={`fixed inset-x-0 bottom-0 z-30 mx-auto max-w-lg transition-all duration-500 ease-out-quint ${
-          cartCount > 0 ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-full opacity-0"
+          cartCount > 0
+            ? "translate-y-0 opacity-100"
+            : "invisible pointer-events-none translate-y-full opacity-0"
         }`}
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <div className="gradient-dark mx-3 mb-3 overflow-hidden rounded-2xl shadow-elevated">
@@ -533,7 +627,9 @@ export default function MenuPage() {
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-ink/60 backdrop-blur-sm transition-opacity"
           onClick={() => !submitting && setCheckoutOpen(false)}>
           <div role="dialog" aria-modal="true" aria-label="تکمیل سفارش"
-            className="max-h-[92vh] w-full max-w-lg animate-fade-in-up overflow-y-auto rounded-t-3xl bg-white shadow-elevated"
+            ref={checkoutDialogRef}
+            tabIndex={-1}
+            className="max-h-[92vh] w-full max-w-lg animate-fade-in-up overflow-y-auto rounded-t-3xl bg-white shadow-elevated outline-none"
             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
             onClick={(e) => e.stopPropagation()}>
 
@@ -568,7 +664,8 @@ export default function MenuPage() {
                         <p className="text-2xs text-ink-muted num">{formatToman(line.product.price)}</p>
                       </div>
                     </div>
-                    <QtyControl value={line.quantity} onChange={(q) => setQty(line.product.id, q)} disabled={submitting} compact />
+                    <QtyControl value={line.quantity} onChange={(q) => setQty(line.product.id, q)} disabled={submitting}
+                      label={line.product.name} compact />
                     <span className="w-20 flex-shrink-0 text-left text-sm font-black text-saffron-dark num">
                       {formatToman(line.product.price * line.quantity)}
                     </span>
@@ -637,6 +734,42 @@ export default function MenuPage() {
   );
 }
 
+/**
+ * گروه محصولات با تصمیم «به‌ازای هر محصول»:
+ * محصولِ تصویردار در شبکهٔ دوستونی با کارت بزرگ نشان داده می‌شود
+ * و محصولِ بی‌تصویر به‌صورت ردیف فشرده (لیستی) — بر خلاف قبل که کل دسته
+ * یکجا بین شبکه/لیست جابه‌جا می‌شد.
+ */
+function ProductGroup({ products, catNameById, cart, onQtyChange }: {
+  products: Product[];
+  catNameById: Map<number, string>;
+  cart: Record<number, number>;
+  onQtyChange: (productId: number, qty: number) => void;
+}) {
+  const withImage = products.filter((p) => p.image_url);
+  const withoutImage = products.filter((p) => !p.image_url);
+  return (
+    <div className="space-y-2.5">
+      {withImage.length > 0 && (
+        <div className="grid grid-cols-2 gap-3">
+          {withImage.map((product) => (
+            <GridCard key={product.id} product={product}
+              catName={catNameById.get(product.category_id) ?? ""}
+              qty={cart[product.id] ?? 0}
+              onQtyChange={onQtyChange} />
+          ))}
+        </div>
+      )}
+      {withoutImage.map((product) => (
+        <ListCard key={product.id} product={product}
+          catName={catNameById.get(product.category_id) ?? ""}
+          qty={cart[product.id] ?? 0}
+          onQtyChange={onQtyChange} />
+      ))}
+    </div>
+  );
+}
+
 // ═══ کارت شبکه‌ای (وقتی محصول تصویر دارد) ═══════════════════════════════════
 const GridCard = memo(function GridCard({ product, catName, qty, onQtyChange }: {
   product: Product; catName: string; qty: number; onQtyChange: (productId: number, qty: number) => void;
@@ -675,7 +808,8 @@ const GridCard = memo(function GridCard({ product, catName, qty, onQtyChange }: 
           <span className="text-sm font-black text-saffron-dark num">
             {formatToman(product.price)}
           </span>
-          <QtyControl value={qty} onChange={(q) => onQtyChange(product.id, q)} disabled={unavailable} compact />
+          <QtyControl value={qty} onChange={(q) => onQtyChange(product.id, q)} disabled={unavailable}
+            label={product.name} compact />
         </div>
       </div>
     </div>
@@ -713,7 +847,8 @@ const ListCard = memo(function ListCard({ product, catName, qty, onQtyChange }: 
         <span className="whitespace-nowrap text-sm font-black text-saffron-dark num">
           {formatToman(product.price)}
         </span>
-        <QtyControl value={qty} onChange={(q) => onQtyChange(product.id, q)} disabled={unavailable} />
+        <QtyControl value={qty} onChange={(q) => onQtyChange(product.id, q)} disabled={unavailable}
+          label={product.name} />
       </div>
     </div>
   );

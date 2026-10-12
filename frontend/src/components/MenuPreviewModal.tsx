@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api } from "../api/client";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 import type { MenuCategory } from "../types";
 import { formatToman } from "../utils/format";
 
@@ -14,6 +15,11 @@ export default function MenuPreviewModal({ onClose }: Props) {
   const [activecat, setActiveCat] = useState<number | "all">("all");
   const sectionRefs = useRef<Record<number, HTMLElement | null>>({});
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  // فوکوس اولیه، تلهٔ Tab، قفل اسکرول، Escape و بازگرداندن فوکوس هنگام بستن
+  useDialogA11y(dialogRef, onClose);
 
   const loadMenu = useCallback(async () => {
     try {
@@ -27,11 +33,7 @@ export default function MenuPreviewModal({ onClose }: Props) {
 
   useEffect(() => {
     loadMenu();
-    // بستن با Escape
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [loadMenu, onClose]);
+  }, [loadMenu]);
 
   const scrollTo = (catId: number) => {
     setActiveCat(catId);
@@ -50,16 +52,18 @@ export default function MenuPreviewModal({ onClose }: Props) {
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="پیش‌نمایش منوی مشتری"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-cream shadow-elevated sm:rounded-3xl"
       >
         {/* هدر مودال */}
         <div className="flex items-center justify-between border-b border-saffron/20 bg-white px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="text-xl" aria-hidden="true">🍨</span>
-            <span className="font-display text-lg leading-tight">پیش‌نمایش منوی مشتری</span>
+            <span id={titleId} className="font-display text-lg leading-tight">پیش‌نمایش منوی مشتری</span>
           </div>
           <button
             type="button"
@@ -108,7 +112,21 @@ export default function MenuPreviewModal({ onClose }: Props) {
           )}
 
           {!menu && !loadError && (
-            <p className="py-10 text-center text-sm text-ink/40">در حال دریافت منو…</p>
+            <div className="space-y-3" role="status" aria-label="در حال دریافت منو">
+              <div className="h-4 w-24 animate-pulse rounded bg-cream-200" />
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="animate-pulse flex items-start justify-between gap-3 rounded-xl bg-white p-3 shadow-card"
+                >
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="h-4 w-2/3 rounded-lg bg-cream-200" />
+                    <div className="h-3 w-full rounded bg-cream-100" />
+                  </div>
+                  <div className="h-6 w-16 shrink-0 rounded-full bg-saffron-100" />
+                </div>
+              ))}
+            </div>
           )}
 
           {menu?.length === 0 && (

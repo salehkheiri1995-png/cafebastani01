@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 interface Props {
   title: string;
@@ -8,13 +9,11 @@ interface Props {
 
 // مودال ساده — کلیک روی پس‌زمینه یا کلید Escape آن را می‌بندد
 export default function Modal({ title, onClose, children }: Props) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  // فوکوس اولیه، تلهٔ Tab، قفل اسکرول و بازگرداندن فوکوس هنگام بستن
+  useDialogA11y(dialogRef, onClose);
 
   return (
     <div
@@ -22,14 +21,16 @@ export default function Modal({ title, onClose, children }: Props) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-elevated sm:max-w-md sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-display text-xl leading-tight">{title}</h3>
+          <h3 id={titleId} className="font-display text-xl leading-tight">{title}</h3>
           <button
             type="button"
             onClick={onClose}

@@ -59,7 +59,13 @@ async function send<T>(path: string, options: RequestInit, req: RequestOptions =
 
   // ترکیب لغو بیرونی + مهلت زمانی داخلی
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), req.timeoutMs ?? DEFAULT_TIMEOUT);
+  // پرچم مهلت زمانی: abortِ داخلی همان AbortError را می‌دهد، بدون این پرچم
+  // هیچ‌وقت نمی‌توانستیم تایم‌اوت را از لغو واقعی تشخیص بدهیم
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, req.timeoutMs ?? DEFAULT_TIMEOUT);
   const onAbort = () => controller.abort();
   if (req.signal) {
     if (req.signal.aborted) controller.abort();
@@ -70,8 +76,10 @@ async function send<T>(path: string, options: RequestInit, req: RequestOptions =
   try {
     res = await fetch(path, { ...options, headers, signal: controller.signal });
   } catch (err) {
-    if (req.signal?.aborted) throw new ApiError(0, "درخواست لغو شد");
-    if (err instanceof DOMException && err.name === "TimeoutError") {
+    // لغو واقعی از بیرون (مثلاً خروج از کامپوننت) → همان AbortError عبور می‌کند
+    if (req.signal?.aborted) throw err;
+    // تایم‌اوت داخلی (یا TimeoutError مرورگر) → پیام جداگانهٔ فارسی، نه خطای اتصال
+    if (timedOut || (err instanceof DOMException && err.name === "TimeoutError")) {
       throw new ApiError(0, "پاسخی از سرور نرسید — زمان انتظار تمام شد");
     }
     throw new ApiError(0, "ارتباط با سرور برقرار نشد — اتصال را بررسی کنید");

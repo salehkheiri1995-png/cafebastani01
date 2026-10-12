@@ -200,6 +200,15 @@ def upload_product_image(
     if not (file.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="فقط فایل تصویری مجاز است")
 
+    # بررسی حجم قبل از خواندن کل فایل در حافظه — file.size هنگام پارس بادی
+    # توسط Starlette محاسبه شده و نیازی به read کردن کل فایل نیست
+    if file.size == 0:
+        raise HTTPException(status_code=400, detail="فایل انتخاب‌شده خالی است")
+    if file.size is not None and file.size > MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=400, detail="حجم عکس باید کمتر از ۵ مگابایت باشد"
+        )
+
     # خواندن همزمان فایل آپلودشده (بدون await، چون endpoint همزمانی است)
     data: bytes = file.file.read()
     if len(data) == 0:

@@ -1,5 +1,6 @@
 """اسکیماهای Pydantic برای ورودی/خروجی API"""
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -7,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class LoginIn(BaseModel):
-    password: str
+    password: str = Field(max_length=128)
 
 
 class TokenOut(BaseModel):
@@ -57,7 +58,8 @@ class ProductCreate(BaseModel):
     category_id: int
     name: str = Field(min_length=1, max_length=150)
     description: str | None = Field(default=None, max_length=500)
-    price: int = Field(gt=0, description="قیمت به تومان")
+    # سقف قیمت برای جلوگیری از مبالغ اشتباه/بزرگ
+    price: int = Field(gt=0, le=100_000_000, description="قیمت به تومان")
     is_available: bool = True
     display_order: int = 0
 
@@ -66,7 +68,7 @@ class ProductUpdate(BaseModel):
     category_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=150)
     description: str | None = Field(default=None, max_length=500)
-    price: int | None = Field(default=None, gt=0)
+    price: int | None = Field(default=None, gt=0, le=100_000_000)
     is_available: bool | None = None
     display_order: int | None = None
 
@@ -84,13 +86,21 @@ class MenuCategoryOut(BaseModel):
 # ---------- سفارش ----------
 
 
+# روش‌های پرداخت واقعاً ارسالی توسط UI (CashierPage دکمه‌ها را با "cash"/"card" می‌فرستد؛
+# در دیتابیس هم مقدار قدیمی ذخیره‌شده «cash» است) — هر مقدار دیگری رد می‌شود
+PaymentMethod = Literal["cash", "card"]
+
+# وضعیت‌های واقعی سفارش (همان models.ORDER_STATUSES)
+OrderStatus = Literal["pending", "preparing", "ready", "completed", "cancelled"]
+
+
 class OrderItemIn(BaseModel):
     product_id: int
     quantity: int = Field(gt=0, le=50)
 
 
 class OrderCreate(BaseModel):
-    items: list[OrderItemIn] = Field(min_length=1)
+    items: list[OrderItemIn] = Field(min_length=1, max_length=50)
     customer_name: str | None = Field(default=None, max_length=100)
     note: str | None = Field(default=None, max_length=500)
     idempotency_key: str | None = Field(default=None, max_length=64)
@@ -123,8 +133,8 @@ class OrderOut(BaseModel):
 
 
 class StatusUpdate(BaseModel):
-    status: str
-    payment_method: str | None = None
+    status: OrderStatus
+    payment_method: PaymentMethod | None = None
 
 
 class DeleteResult(BaseModel):
@@ -151,7 +161,9 @@ class ToggleResult(BaseModel):
 
 class OrderEditIn(BaseModel):
     """ورودی ویرایش سفارش — لیست کامل آیتم‌های جدید (جایگزین می‌شود)"""
-    items: list[OrderItemIn] = Field(min_length=1, description="لیست کامل آیتم‌های جدید")
+    items: list[OrderItemIn] = Field(
+        min_length=1, max_length=50, description="لیست کامل آیتم‌های جدید"
+    )
 
 
 class OrderEditLogOut(BaseModel):

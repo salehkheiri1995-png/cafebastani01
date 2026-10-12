@@ -1,10 +1,13 @@
 """اتصال به دیتابیس SQLite و مدیریت Session + migration سبک"""
+import logging
 import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+logger = logging.getLogger(__name__)
 
 # فایل دیتابیس — اگر DATABASE_URL در environment variable تعریف شده باشد از آن استفاده می‌شود
 # در غیر این صورت فایل cafe.db در پوشه backend ساخته می‌شود
@@ -102,7 +105,7 @@ def run_sqlite_migrations(db_engine: Engine) -> None:
         ]
     if "orders" in tables:
         index_statements += [
-            "CREATE INDEX IF NOT EXISTS ix_orders_idempotency_key ON orders (idempotency_key)",
+            # ایندکس یکتای idempotency_key جداگانه و بعد از اینجا ساخته می‌شود
             # ایندکس‌های رسمی orders (ایجاد قبل از حذف ایندکس‌های تکراری پایین)
             "CREATE INDEX IF NOT EXISTS ix_order_created_at ON orders (created_at)",
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_order_code ON orders (code)",
@@ -114,3 +117,30 @@ def run_sqlite_migrations(db_engine: Engine) -> None:
         with db_engine.begin() as conn:
             for statement in index_statements:
                 conn.execute(text(statement))
+
+    # ── ایندکس یکتای idempotency_key ──
+    # قبلاً غیریکتا بود؛ اگر داده تکراری وجود نداشته باشد به ایندکس UNIQUE ارتقا داده
+    # می‌شود (چند مقدار NULL در SQLite برای UNIQUE بی‌خطر است). اگر ساختش شکست
+    # بخورد (داده تکراری قدیمی یا خطای دیگر) فقط هشدار ثبت می‌شود تا برنامه بالا بیاید.
+    if "orders" in tables:
+        try:
+            with db_engine.begin() as conn:
+                duplicate = conn.execute(text(
+                    "SELECT idempotency_key FROM orders "
+                    "WHERE idempotency_key IS NOT NULL "
+                    "GROUP BY idempotency_key HAVING COUNT(*) > 1 LIMIT 1"
+                )).first()
+                if duplicate is not None:
+                    logger.warning(
+                        "idempotency_keyهای تکراری در جدول orders وجود دارد؛ "
+                        "ایندکس یکتا ساخته نشد — مقادیر تکراری را دستی پاک کنید"
+                    )
+                else:
+                    # ایندکس قدیمی غیریکتا باید اول حذف شود تا UNIQUE جدید ساخته شود
+                    conn.execute(text("DROP INDEX IF EXISTS ix_orders_idempotency_key"))
+                    conn.execute(text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_orders_idempotency_key "
+                        "ON orders (idempotency_key)"
+                    ))
+        except Exception:
+            logger.exception("ساخت ایندکس یکتای idempotency_key ناموفق بود")

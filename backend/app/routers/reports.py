@@ -168,6 +168,9 @@ def export_excel(
     orders = (
         query.options(selectinload(models.Order.items))  # جلوگیری از N+1
         .order_by(models.Order.created_at.desc())
+        # سقف ۵۰۰۰ سفارش برای خروجی فایل — جلوگیری از فایل‌های غیرقابل مدیریت؛
+        # رکوردهای اضافی فقط همین‌جا بریده می‌شوند و شکل پاسخ تغییری نمی‌کند
+        .limit(5000)
         .all()
     )
 
@@ -252,6 +255,9 @@ def export_pdf(
     orders = (
         query.options(selectinload(models.Order.items))  # جلوگیری از N+1
         .order_by(models.Order.created_at.desc())
+        # سقف ۵۰۰۰ سفارش برای خروجی فایل — جلوگیری از فایل‌های غیرقابل مدیریت؛
+        # رکوردهای اضافی فقط همین‌جا بریده می‌شوند و شکل پاسخ تغییری نمی‌کند
+        .limit(5000)
         .all()
     )
 

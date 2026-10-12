@@ -9,6 +9,81 @@ import { resolveImageUrl } from "../utils/image";
 // وضعیت‌های پایانی: بعد از رسیدن به این‌ها دیگر نیازی به رفرش خودکار نیست
 const TERMINAL: OrderStatus[] = ["completed", "cancelled"];
 
+// مراحل پیگیری سفارش — ترتیب از راست به چپ (RTL)
+const STEPS: { status: OrderStatus; label: string }[] = [
+  { status: "pending", label: "در انتظار" },
+  { status: "preparing", label: "در حال آماده‌سازی" },
+  { status: "ready", label: "آماده تحویل" },
+  { status: "completed", label: "تحویل شده" },
+];
+
+/**
+ * نوار پیشرفت ۴ مرحله‌ای سفارش (RTL):
+ * هر مرحلهٔ رسیده تیک می‌خورد، مرحلهٔ فعلی با aria-current="step" علامت می‌خورد
+ * و سفارشِ لغو‌شده به‌جای نوار، حالت لغو جداگانه نشان می‌دهد.
+ */
+function ProgressStepper({ status }: { status: OrderStatus }) {
+  if (status === "cancelled") {
+    return (
+      <div role="status" className="mt-4 flex items-center justify-center gap-2 rounded-xl bg-berry-light px-4 py-3 text-sm font-bold text-berry">
+        <span aria-hidden="true">✕</span>
+        سفارش لغو شد
+      </div>
+    );
+  }
+
+  const currentIndex = STEPS.findIndex((s) => s.status === status);
+  return (
+    <ol aria-label="مرحله‌های سفارش" className="mt-4 flex items-start">
+      {STEPS.map((step, i) => {
+        const isDone = i < currentIndex;
+        const isCurrent = i === currentIndex;
+        // خط رابط سمت راست (به مرحلهٔ قبل) و سمت چپ (به مرحلهٔ بعد) —
+        // اسلات‌های خالی برای اولین/آخرین مرحله تا دایره‌ها وسط‌چین بمانند
+        const rightLine = i > 0 && i <= currentIndex;
+        const leftLine = i < STEPS.length - 1 && i < currentIndex;
+        return (
+          <li key={step.status}
+            aria-current={isCurrent ? "step" : undefined}
+            className="relative flex min-w-0 flex-1 flex-col items-center gap-1.5 px-0.5">
+
+            <div className="flex w-full items-center">
+              {i > 0 ? (
+                <span aria-hidden="true"
+                  className={`h-0.5 flex-1 rounded-full ${rightLine ? "bg-saffron" : "bg-cream-300"}`} />
+              ) : (
+                <span aria-hidden="true" className="h-0.5 flex-1" />
+              )}
+              <span aria-hidden="true"
+                className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-2xs font-black transition-colors ${
+                  isDone
+                    ? "gradient-saffron text-white shadow-warm"
+                    : isCurrent
+                      ? "bg-white text-saffron-dark ring-2 ring-saffron"
+                      : "bg-cream-200 text-ink-faint"
+                }`}>
+                {isDone ? "✓" : faNum(i + 1)}
+              </span>
+              {i < STEPS.length - 1 ? (
+                <span aria-hidden="true"
+                  className={`h-0.5 flex-1 rounded-full ${leftLine ? "bg-saffron" : "bg-cream-300"}`} />
+              ) : (
+                <span aria-hidden="true" className="h-0.5 flex-1" />
+              )}
+            </div>
+
+            <span className={`text-center text-3xs leading-tight ${
+              isCurrent ? "font-black text-ink" : isDone ? "font-bold text-saffron-dark" : "font-medium text-ink-faint"
+            }`}>
+              {step.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 // صفحه موفقیت سفارش — «بلیت» سفارش با QR کد مخصوص همان سفارش
 export default function OrderSuccessPage() {
   const { code } = useParams<{ code: string }>();
@@ -16,6 +91,11 @@ export default function OrderSuccessPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const statusRef = useRef<OrderStatus | null>(null);
+
+  // عنوان صفحه در تب مرورگر
+  useEffect(() => {
+    document.title = "پیگیری سفارش — کافه‌بستنی";
+  }, []);
 
   const load = useCallback(
     async (silent = false) => {
@@ -156,6 +236,9 @@ export default function OrderSuccessPage() {
           <div className="mt-3" aria-live="polite">
             <StatusBadge status={order.status} />
           </div>
+
+          {/* نوار پیشرفت ۴ مرحله‌ای — تغییر وضعیت با همان aria-live اعلام می‌شود */}
+          <ProgressStepper status={order.status} />
 
           {/* اقلام سفارش */}
           <div className="receipt-divider my-4" />

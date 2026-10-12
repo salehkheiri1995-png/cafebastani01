@@ -20,6 +20,13 @@ order_limiter = SlidingWindowLimiter(
     detail="تعداد سفارش بیش از حد مجاز است — لطفاً کمی صبر کنید و دوباره تلاش کنید",
 )
 
+# ── Rate Limiting برای مشاهده وضعیت سفارش (بدون لاگین، قابل حدس زدن) ──
+order_view_limiter = SlidingWindowLimiter(
+    max_requests=60,  # حداکثر ۶۰ درخواست در دقیقه برای هر IP
+    window_seconds=60,
+    detail="تعداد درخواست بیش از حد مجاز است — لطفاً کمی صبر کنید",
+)
+
 
 def order_to_out(order: models.Order, with_qr: bool = True) -> OrderOut:
     """تبدیل مدل سفارش به اسکیمای خروجی + افزودن تصویر QR در صورت نیاز"""
@@ -55,8 +62,10 @@ def place_order(body: OrderCreate, request: Request, db: Session = Depends(get_d
 
 
 @router.get("/{code}", response_model=OrderOut)
-def get_order(code: str, db: Session = Depends(get_db)):
+def get_order(code: str, request: Request, db: Session = Depends(get_db)):
     """مشاهده سفارش با کد — برای صفحه موفقیت مشتری (همیشه قابل بازکردن)"""
+    # مسیر عمومی و بدون لاگین → محدودسازی نرخ بر اساس IP
+    order_view_limiter.check(client_ip(request))
     order = (
         db.query(models.Order)
         .filter(models.Order.code == code.strip().upper())

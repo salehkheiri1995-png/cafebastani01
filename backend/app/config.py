@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     is_open: bool = True
     # نمایش مستندات API (/docs، /redoc، /openapi.json) — در production باید false بماند
     docs_enabled: bool = False
+    # اجرای داده اولیه (seed) در استارت — با SEED_ON_STARTUP=false غیرفعال می‌شود
+    seed_on_startup: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:
